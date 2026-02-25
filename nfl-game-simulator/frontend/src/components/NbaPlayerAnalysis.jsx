@@ -788,6 +788,73 @@ const NbaPlayerAnalysis = () => {
                   data.factors.opponent_effect,
                   `Does the opponent significantly affect ${data.stat}? (ANOVA test across teams)`
                 )}
+                {/* ── New factors ── */}
+                {data.factors.blowout_effect && (
+                  <div className={`factor-card ${data.factors.blowout_effect.significant ? 'significant' : 'not-significant'}`}>
+                    <div className="factor-header">
+                      <h4>Game Margin Effect</h4>
+                      <span className={`factor-badge ${data.factors.blowout_effect.significant ? 'sig' : 'not-sig'}`}>
+                        {data.factors.blowout_effect.significant ? 'SIGNIFICANT' : 'Not significant'}
+                      </span>
+                    </div>
+                    <p className="factor-desc">Does {data.stat} differ in close games vs blowouts? (ANOVA: close &lt;6, moderate 6-15, blowout &gt;15)</p>
+                    <div className="factor-details">
+                      <div className="factor-stat">
+                        <span className="factor-stat-label">p-value</span>
+                        <span className="factor-stat-value">{data.factors.blowout_effect.p_value.toFixed(4)}</span>
+                      </div>
+                      <div className="factor-comparison" style={{flexWrap: 'wrap'}}>
+                        {data.factors.blowout_effect.close_mean != null && (
+                          <div className="comp-item">
+                            <span className="comp-label">Close</span>
+                            <span className="comp-value">{data.factors.blowout_effect.close_mean.toFixed(1)}</span>
+                            <span className="comp-n">({data.factors.blowout_effect.close_n} games)</span>
+                          </div>
+                        )}
+                        {data.factors.blowout_effect.moderate_mean != null && (
+                          <div className="comp-item">
+                            <span className="comp-label">Moderate</span>
+                            <span className="comp-value">{data.factors.blowout_effect.moderate_mean.toFixed(1)}</span>
+                            <span className="comp-n">({data.factors.blowout_effect.moderate_n} games)</span>
+                          </div>
+                        )}
+                        {data.factors.blowout_effect.blowout_mean != null && (
+                          <div className="comp-item">
+                            <span className="comp-label">Blowout</span>
+                            <span className="comp-value">{data.factors.blowout_effect.blowout_mean.toFixed(1)}</span>
+                            <span className="comp-n">({data.factors.blowout_effect.blowout_n} games)</span>
+                          </div>
+                        )}
+                      </div>
+                      <p className="factor-interpretation">{data.factors.blowout_effect.interpretation}</p>
+                    </div>
+                  </div>
+                )}
+                {renderFactorCard(
+                  'Usage Rate',
+                  data.factors.usage_rate,
+                  `Does higher offensive involvement (FGA/min) correlate with ${data.stat}?`
+                )}
+                {renderFactorCard(
+                  'Opponent Pace',
+                  data.factors.opponent_pace,
+                  `Does opponent game speed affect ${data.stat}? Faster pace = more possessions.`
+                )}
+                {renderFactorCard(
+                  'Opponent Defense',
+                  data.factors.opponent_defense,
+                  `Does opponent defensive quality (DEF_RATING) predict ${data.stat}? Higher = weaker D.`
+                )}
+                {renderFactorCard(
+                  'Momentum (Streaks)',
+                  data.factors.momentum,
+                  `Does the previous 5-game average predict the next game's ${data.stat}? Tests hot/cold streaks.`
+                )}
+                {renderFactorCard(
+                  'Shooting Efficiency',
+                  data.factors.shooting_efficiency,
+                  `Does per-game FG% correlate with ${data.stat}?`
+                )}
               </div>
             )}
 

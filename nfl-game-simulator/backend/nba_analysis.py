@@ -52,6 +52,51 @@ def get_team_defensive_ratings(season='2024-25'):
     return df
 
 
+def get_team_context(season='2024-25'):
+    """
+    Fetch all teams' pace, offensive/defensive ratings in a single API call.
+    Returns dict keyed by team abbreviation.
+    """
+    time.sleep(0.6)
+    stats = leaguedashteamstats.LeagueDashTeamStats(
+        season=season,
+        measure_type_detailed_defense='Advanced',
+        timeout=30,
+    )
+    df = stats.get_data_frames()[0]
+    context = {}
+    for _, row in df.iterrows():
+        abbr = row.get('TEAM_ABBREVIATION', row.get('TEAM_NAME', ''))
+        context[abbr] = {
+            'pace': _safe_float(row.get('PACE')),
+            'off_rating': _safe_float(row.get('OFF_RATING')),
+            'def_rating': _safe_float(row.get('DEF_RATING')),
+            'net_rating': _safe_float(row.get('NET_RATING')),
+        }
+    return context
+
+
+def enrich_with_opponent_context(df, team_context):
+    """
+    Add opponent pace and defensive rating to each game row.
+    team_context is the dict returned by get_team_context().
+    """
+    df = df.copy()
+    df['opp_pace'] = df['opponent'].map(
+        lambda opp: team_context.get(opp, {}).get('pace')
+    ).astype(float)
+    df['opp_def_rating'] = df['opponent'].map(
+        lambda opp: team_context.get(opp, {}).get('def_rating')
+    ).astype(float)
+    df['opp_off_rating'] = df['opponent'].map(
+        lambda opp: team_context.get(opp, {}).get('off_rating')
+    ).astype(float)
+    df['opp_net_rating'] = df['opponent'].map(
+        lambda opp: team_context.get(opp, {}).get('net_rating')
+    ).astype(float)
+    return df
+
+
 # ── Core Analysis ────────────────────────────────────────────────────────────
 
 def compute_z_scores(values):
@@ -146,13 +191,11 @@ def test_distribution(values):
 def build_game_features(game_logs_df):
     """
     Enrich game log DataFrame with features for factor analysis:
-    - home/away
-    - opponent
-    - rest days
-    - back-to-back indicator
-    - minutes played
-    - game result (W/L)
-    - point differential
+    - home/away, opponent
+    - rest days, back-to-back
+    - game result, point differential
+    - blowout category, usage proxy, shooting efficiency
+    - rolling averages (momentum)
     """
     df = game_logs_df.copy()
 
@@ -176,6 +219,26 @@ def build_game_features(game_logs_df):
 
     # Season game number
     df['game_number'] = range(1, len(df) + 1)
+
+    # ── New derived features ──────────────────────────────────────────────
+
+    # Blowout category based on final margin
+    abs_margin = df['PLUS_MINUS'].abs()
+    df['blowout_category'] = pd.cut(
+        abs_margin, bins=[-1, 5, 15, 200],
+        labels=['close', 'moderate', 'blowout']
+    )
+
+    # Minutes as float for calculations
+    df['minutes_float'] = df['MIN'].apply(_parse_minutes)
+
+    # Usage proxy: FGA per minute (how involved is the player offensively)
+    if 'FGA' in df.columns:
+        df['fga_per_min'] = df['FGA'] / df['minutes_float'].replace(0, np.nan)
+
+    # Per-game shooting efficiency
+    if 'FG_PCT' in df.columns:
+        df['fg_pct_game'] = df['FG_PCT']
 
     return df
 
@@ -342,6 +405,123 @@ def analyze_factors(df, stat_col):
                 for _, row in opp_stats.iterrows()
             ]
         }
+
+    # 9. Blowout effect (close vs moderate vs blowout)
+    if 'blowout_category' in df.columns:
+        groups = {}
+        for cat in ['close', 'moderate', 'blowout']:
+            vals = df[df['blowout_category'] == cat][stat_col].values
+            if len(vals) >= 1:
+                groups[cat] = vals
+        if len(groups) >= 2:
+            group_lists = list(groups.values())
+            if all(len(g) >= 2 for g in group_lists):
+                f_stat, p_val = scipy_stats.f_oneway(*group_lists)
+            else:
+                f_stat, p_val = 0.0, 1.0
+            factors['blowout_effect'] = {
+                'close_mean': float(np.mean(groups['close'])) if 'close' in groups else None,
+                'close_n': int(len(groups.get('close', []))),
+                'moderate_mean': float(np.mean(groups['moderate'])) if 'moderate' in groups else None,
+                'moderate_n': int(len(groups.get('moderate', []))),
+                'blowout_mean': float(np.mean(groups['blowout'])) if 'blowout' in groups else None,
+                'blowout_n': int(len(groups.get('blowout', []))),
+                'f_statistic': float(f_stat),
+                'p_value': float(p_val),
+                'significant': bool(p_val < 0.05),
+                'interpretation': (
+                    'Significant difference by game margin'
+                    if p_val < 0.05 else 'No significant effect of game margin'
+                ),
+            }
+
+    # 10. Usage rate correlation (FGA per minute)
+    if 'fga_per_min' in df.columns:
+        usage = df['fga_per_min'].values
+        mask = ~np.isnan(usage) & ~np.isnan(stat_values)
+        if mask.sum() >= 3:
+            r, p = scipy_stats.pearsonr(usage[mask], stat_values[mask])
+            factors['usage_rate'] = {
+                'correlation': float(r),
+                'p_value': float(p),
+                'significant': bool(p < 0.05),
+                'mean_fga_per_min': float(np.nanmean(usage)),
+                'interpretation': (
+                    f"{'Positive' if r > 0 else 'Negative'} correlation with usage "
+                    f"({'strong' if abs(r) > 0.5 else 'moderate' if abs(r) > 0.3 else 'weak'})"
+                )
+            }
+
+    # 11. Opponent pace correlation
+    if 'opp_pace' in df.columns:
+        pace = df['opp_pace'].values
+        mask = ~np.isnan(pace) & ~np.isnan(stat_values)
+        if mask.sum() >= 3:
+            r, p = scipy_stats.pearsonr(pace[mask], stat_values[mask])
+            factors['opponent_pace'] = {
+                'correlation': float(r),
+                'p_value': float(p),
+                'significant': bool(p < 0.05),
+                'interpretation': (
+                    f"{'Higher' if r > 0 else 'Lower'} {stat_col} vs faster-paced opponents "
+                    f"({'strong' if abs(r) > 0.5 else 'moderate' if abs(r) > 0.3 else 'weak'})"
+                )
+            }
+
+    # 12. Opponent defensive rating correlation
+    if 'opp_def_rating' in df.columns:
+        def_rtg = df['opp_def_rating'].values
+        mask = ~np.isnan(def_rtg) & ~np.isnan(stat_values)
+        if mask.sum() >= 3:
+            r, p = scipy_stats.pearsonr(def_rtg[mask], stat_values[mask])
+            factors['opponent_defense'] = {
+                'correlation': float(r),
+                'p_value': float(p),
+                'significant': bool(p < 0.05),
+                'interpretation': (
+                    f"{'Higher' if r > 0 else 'Lower'} {stat_col} vs weaker defenses "
+                    f"({'strong' if abs(r) > 0.5 else 'moderate' if abs(r) > 0.3 else 'weak'}). "
+                    f"Higher DEF_RATING = worse defense."
+                )
+            }
+
+    # 13. Hot/cold streaks (5-game rolling average trend)
+    if len(stat_values) >= 10:
+        rolling_5 = pd.Series(stat_values).rolling(5, min_periods=5).mean().values
+        # Correlate rolling avg with raw value to see if momentum matters
+        mask = ~np.isnan(rolling_5) & ~np.isnan(stat_values)
+        if mask.sum() >= 5:
+            # Compare: do games after hot streaks stay hot?
+            # Use shifted rolling avg (previous 5 games) vs current game
+            prev_rolling = pd.Series(stat_values).rolling(5, min_periods=5).mean().shift(1).values
+            mask = ~np.isnan(prev_rolling) & ~np.isnan(stat_values)
+            if mask.sum() >= 5:
+                r, p = scipy_stats.pearsonr(prev_rolling[mask], stat_values[mask])
+                factors['momentum'] = {
+                    'correlation': float(r),
+                    'p_value': float(p),
+                    'significant': bool(p < 0.05),
+                    'interpretation': (
+                        f"{'Hot streaks carry over' if r > 0.3 else 'Cold streaks carry over' if r < -0.3 else 'No momentum effect'} "
+                        f"(r={r:.3f}). Previous 5-game avg {'predicts' if p < 0.05 else 'does NOT predict'} next game."
+                    )
+                }
+
+    # 14. Shooting efficiency effect (FG% correlation with the stat)
+    if 'fg_pct_game' in df.columns and stat_col not in ('FG_PCT', 'FG3_PCT', 'FT_PCT'):
+        fg_pct = df['fg_pct_game'].values.astype(float)
+        mask = ~np.isnan(fg_pct) & ~np.isnan(stat_values)
+        if mask.sum() >= 3:
+            r, p = scipy_stats.pearsonr(fg_pct[mask], stat_values[mask])
+            factors['shooting_efficiency'] = {
+                'correlation': float(r),
+                'p_value': float(p),
+                'significant': bool(p < 0.05),
+                'interpretation': (
+                    f"{'Positive' if r > 0 else 'Negative'} relationship with FG% "
+                    f"({'strong' if abs(r) > 0.5 else 'moderate' if abs(r) > 0.3 else 'weak'})"
+                )
+            }
 
     return factors
 
@@ -633,6 +813,13 @@ def run_full_analysis(player_name, stat, season='2024-25'):
 
     # 3. Build features
     df = build_game_features(game_logs)
+
+    # 3b. Enrich with opponent context (pace, def rating) — 1 extra API call
+    try:
+        team_ctx = get_team_context(season)
+        df = enrich_with_opponent_context(df, team_ctx)
+    except Exception:
+        pass  # non-critical, analysis works without it
 
     # 4. Extract stat values
     stat_upper = stat.upper()
