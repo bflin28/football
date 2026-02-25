@@ -3,16 +3,17 @@ import './App.css'
 import GameSelector from './components/GameSelector'
 import PlayViewer from './components/PlayViewer'
 import ModelAnalysis from './components/ModelAnalysis'
+import NbaPlayerAnalysis from './components/NbaPlayerAnalysis'
 
 function App() {
   const [selectedGame, setSelectedGame] = useState(null)
   const [games, setGames] = useState([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('simulator') // 'simulator' or 'analysis'
+  const [activeTab, setActiveTab] = useState('nba')
 
   useEffect(() => {
-    // Fetch available games  
-    fetch('http://localhost:5000/api/games')
+    // Fetch available games (uses Vite proxy → Flask)
+    fetch('/api/games')
       .then(res => res.json())
       .then(data => {
         setGames(data)
@@ -24,48 +25,55 @@ function App() {
       })
   }, [])
 
-  if (loading) {
-    return (
-      <div className="app">
-        <h1>NFL Analysis Platform</h1>
-        <p>Loading... (Make sure the Flask backend is running on port 5000)</p>
-      </div>
-    )
-  }
-
   return (
     <div className="app">
       <div className="app-header">
-        <h1>🏈 NFL Analysis Platform</h1>
+        <h1>Sports Analysis Platform</h1>
         <div className="app-tabs">
-          <button 
+          <button
+            className={`app-tab ${activeTab === 'nba' ? 'active' : ''}`}
+            onClick={() => setActiveTab('nba')}
+          >
+            NBA Z-Scores
+          </button>
+          <button
             className={`app-tab ${activeTab === 'simulator' ? 'active' : ''}`}
             onClick={() => {
               setActiveTab('simulator')
-              setSelectedGame(null) // Reset game selection when switching tabs
+              setSelectedGame(null)
             }}
           >
-            🎮 Game Simulator
+            NFL Simulator
           </button>
-          <button 
+          <button
             className={`app-tab ${activeTab === 'analysis' ? 'active' : ''}`}
             onClick={() => setActiveTab('analysis')}
           >
-            🤖 Model Analysis
+            NFL Model
           </button>
         </div>
       </div>
 
       <div className="app-content">
+        {activeTab === 'nba' && (
+          <div className="analysis-section">
+            <NbaPlayerAnalysis />
+          </div>
+        )}
+
         {activeTab === 'simulator' && (
           <div className="simulator-section">
-            {!selectedGame ? (
-              <GameSelector 
-                games={games} 
+            {loading ? (
+              <p style={{ textAlign: 'center', padding: '40px', color: '#7f8c8d' }}>
+                Loading NFL data...
+              </p>
+            ) : !selectedGame ? (
+              <GameSelector
+                games={games}
                 onSelectGame={setSelectedGame}
               />
             ) : (
-              <PlayViewer 
+              <PlayViewer
                 game={selectedGame}
                 onBackToGames={() => setSelectedGame(null)}
               />

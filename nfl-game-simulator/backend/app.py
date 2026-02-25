@@ -425,10 +425,106 @@ def get_feature_correlation():
         'description': 'Feature correlation matrix showing relationships between variables'
     })
 
+# ── NBA Analysis Endpoints ───────────────────────────────────────────────────
+
+from nba_analysis import (
+    run_full_analysis,
+    find_player,
+    get_player_game_logs,
+    build_game_features,
+    compute_z_scores,
+    test_distribution,
+    analyze_factors,
+)
+
+# Cache for NBA data (avoid repeated API calls)
+_nba_cache = {}
+
+@app.route('/api/nba/analyze', methods=['GET'])
+def nba_analyze_player():
+    """
+    Full z-score + factor analysis for a player stat.
+
+    Query params:
+        player: player name (e.g. "Nikola Jokic")
+        stat: stat column (e.g. "AST", "PTS", "REB")
+        season: NBA season (e.g. "2024-25"), defaults to current
+    """
+    from flask import request
+
+    player_name = request.args.get('player', 'Nikola Jokic')
+    stat = request.args.get('stat', 'AST')
+    season = request.args.get('season', '2024-25')
+
+    cache_key = f"{player_name}|{stat}|{season}"
+    if cache_key in _nba_cache:
+        return jsonify(_nba_cache[cache_key])
+
+    try:
+        result = run_full_analysis(player_name, stat, season)
+        _nba_cache[cache_key] = result
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f'Analysis failed: {str(e)}'}), 500
+
+
+@app.route('/api/nba/players/search', methods=['GET'])
+def nba_search_players():
+    """Search for NBA players by name."""
+    from flask import request
+    from nba_api.stats.static import players as nba_players
+
+    query = request.args.get('q', '')
+    if len(query) < 2:
+        return jsonify([])
+
+    active = nba_players.get_active_players()
+    matches = [
+        {'id': p['id'], 'name': p['full_name'], 'team': ''}
+        for p in active
+        if query.lower() in p['full_name'].lower()
+    ][:20]
+
+    return jsonify(matches)
+
+
+@app.route('/api/nba/stats-list', methods=['GET'])
+def nba_stats_list():
+    """Return available stats that can be analyzed."""
+    return jsonify([
+        {'key': 'AST', 'label': 'Assists'},
+        {'key': 'PTS', 'label': 'Points'},
+        {'key': 'REB', 'label': 'Rebounds'},
+        {'key': 'STL', 'label': 'Steals'},
+        {'key': 'BLK', 'label': 'Blocks'},
+        {'key': 'TOV', 'label': 'Turnovers'},
+        {'key': 'FG3M', 'label': '3-Pointers Made'},
+        {'key': 'FGM', 'label': 'Field Goals Made'},
+        {'key': 'FGA', 'label': 'Field Goals Attempted'},
+        {'key': 'FTM', 'label': 'Free Throws Made'},
+        {'key': 'FTA', 'label': 'Free Throws Attempted'},
+        {'key': 'OREB', 'label': 'Offensive Rebounds'},
+        {'key': 'DREB', 'label': 'Defensive Rebounds'},
+        {'key': 'PF', 'label': 'Personal Fouls'},
+        {'key': 'PLUS_MINUS', 'label': 'Plus/Minus'},
+    ])
+
+
+@app.route('/api/nba/cache/clear', methods=['POST'])
+def nba_clear_cache():
+    """Clear the NBA data cache."""
+    _nba_cache.clear()
+    return jsonify({'status': 'cache cleared'})
+
+
 if __name__ == '__main__':
+    print("Starting Sports Analysis Platform...")
     print("Loading NFL data...")
     load_nfl_data()
     print(f"Loaded {len(pbp_data)} plays")
+    print("NBA endpoints ready (data fetched on demand)")
     import os
     port = int(os.environ.get('PORT', 5000))
-    app.run(debug=True, port=port)
+    app.run(debug=True, host='0.0.0.0', port=port)
