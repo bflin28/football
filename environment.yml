@@ -1,0 +1,26 @@
+name: football-4th-down
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pandas
+  - numpy
+  - scikit-learn
+  - lightgbm
+  - xgboost
+  - matplotlib
+  - seaborn
+  - plotly
+  - jupyterlab
+  - jupyter
+  - ipykernel
+  - pyarrow
+  - sqlalchemy
+  - requests
+  - flask
+  - flask-cors
+  - pip:
+      - nfl-data-py
+      - shap
+      - rich

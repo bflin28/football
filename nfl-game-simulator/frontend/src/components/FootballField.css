@@ -1,0 +1,47 @@
+.football-field {
+  width: 100%;
+  margin: 20px auto;
+  background: #f5f5f5;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.field-svg {
+  width: 100%;
+  height: auto;
+  border: 2px solid #333;
+  border-radius: 4px;
+}
+
+.field-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 15px;
+  padding: 10px;
+  background: white;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.possession {
+  color: #007bff;
+}
+
+.down-distance {
+  color: #28a745;
+  font-size: 18px;
+}
+
+.yard-line {
+  color: #6c757d;
+}
+
+@media (max-width: 768px) {
+  .field-info {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+}
