@@ -435,6 +435,11 @@ from nba_analysis import (
     compute_z_scores,
     test_distribution,
     analyze_factors,
+    get_player_synergy_data,
+    get_team_synergy_data,
+    get_opponent_scheme_matchup,
+    PLAY_TYPES,
+    PLAY_TYPE_LABELS,
 )
 
 # Cache for NBA data (avoid repeated API calls)
@@ -509,6 +514,101 @@ def nba_stats_list():
         {'key': 'DREB', 'label': 'Defensive Rebounds'},
         {'key': 'PF', 'label': 'Personal Fouls'},
         {'key': 'PLUS_MINUS', 'label': 'Plus/Minus'},
+    ])
+
+
+@app.route('/api/nba/play-types/player', methods=['GET'])
+def nba_player_play_types():
+    """
+    Synergy play type breakdown for a player's team.
+
+    Query params:
+        player: player name (e.g. "Nikola Jokic")
+        season: NBA season (e.g. "2024-25")
+    """
+    from flask import request
+
+    player_name = request.args.get('player', 'Nikola Jokic')
+    season = request.args.get('season', '2024-25')
+
+    cache_key = f"synergy_player|{player_name}|{season}"
+    if cache_key in _nba_cache:
+        return jsonify(_nba_cache[cache_key])
+
+    try:
+        result = get_player_synergy_data(player_name, season)
+        _nba_cache[cache_key] = result
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f'Play type fetch failed: {str(e)}'}), 500
+
+
+@app.route('/api/nba/play-types/team', methods=['GET'])
+def nba_team_play_types():
+    """
+    Synergy play type breakdown for a team (offensive + defensive).
+
+    Query params:
+        team: team abbreviation (e.g. "DEN", "LAL")
+        season: NBA season (e.g. "2024-25")
+    """
+    from flask import request
+
+    team_abbr = request.args.get('team', 'DEN')
+    season = request.args.get('season', '2024-25')
+
+    cache_key = f"synergy_team|{team_abbr}|{season}"
+    if cache_key in _nba_cache:
+        return jsonify(_nba_cache[cache_key])
+
+    try:
+        result = get_team_synergy_data(team_abbr, season)
+        _nba_cache[cache_key] = result
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f'Team play type fetch failed: {str(e)}'}), 500
+
+
+@app.route('/api/nba/play-types/matchup', methods=['GET'])
+def nba_scheme_matchup():
+    """
+    Cross-reference player stat output vs opponent defensive scheme weaknesses.
+
+    Query params:
+        player: player name
+        stat: stat column (e.g. "AST", "PTS")
+        season: NBA season
+    """
+    from flask import request
+
+    player_name = request.args.get('player', 'Nikola Jokic')
+    stat = request.args.get('stat', 'AST')
+    season = request.args.get('season', '2024-25')
+
+    cache_key = f"synergy_matchup|{player_name}|{stat}|{season}"
+    if cache_key in _nba_cache:
+        return jsonify(_nba_cache[cache_key])
+
+    try:
+        result = get_opponent_scheme_matchup(player_name, stat, season)
+        _nba_cache[cache_key] = result
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f'Matchup analysis failed: {str(e)}'}), 500
+
+
+@app.route('/api/nba/play-types/list', methods=['GET'])
+def nba_play_types_list():
+    """Return available Synergy play types."""
+    return jsonify([
+        {'key': pt, 'label': PLAY_TYPE_LABELS[pt]}
+        for pt in PLAY_TYPES
     ])
 
 

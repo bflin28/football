@@ -9,8 +9,8 @@ import time
 import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
-from nba_api.stats.endpoints import playergamelog, leaguedashteamstats
-from nba_api.stats.static import players
+from nba_api.stats.endpoints import playergamelog, leaguedashteamstats, synergyplaytypes
+from nba_api.stats.static import players, teams as nba_teams
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -357,6 +357,256 @@ def _parse_minutes(val):
         return float(parts[0]) + float(parts[1]) / 60 if len(parts) == 2 else float(parts[0])
     except (ValueError, IndexError):
         return np.nan
+
+
+# ── Synergy Play Type Analysis ───────────────────────────────────────────────
+
+PLAY_TYPES = [
+    'Transition', 'Isolation', 'PRBallHandler', 'PRRollman',
+    'Postup', 'Spotup', 'Handoff', 'Cut', 'OffScreen', 'OffRebound', 'Misc',
+]
+
+PLAY_TYPE_LABELS = {
+    'Transition': 'Transition',
+    'Isolation': 'Isolation',
+    'PRBallHandler': 'Pick & Roll (Ball Handler)',
+    'PRRollman': 'Pick & Roll (Roll Man)',
+    'Postup': 'Post Up',
+    'Spotup': 'Spot Up',
+    'Handoff': 'Handoff',
+    'Cut': 'Cut',
+    'OffScreen': 'Off Screen',
+    'OffRebound': 'Putbacks',
+    'Misc': 'Misc',
+}
+
+
+def get_player_synergy_data(player_name, season='2024-25'):
+    """
+    Fetch Synergy play type data for a specific player.
+    Returns offensive and defensive play type breakdowns.
+    """
+    player = find_player(player_name)
+    team_id = None
+
+    # Get the player's team from their most recent game log
+    time.sleep(0.6)
+    log = playergamelog.PlayerGameLog(
+        player_id=player['id'], season=season,
+        season_type_all_star='Regular Season', timeout=30,
+    )
+    df = log.get_data_frames()[0]
+    if df.empty:
+        raise ValueError(f"No game data for {player_name} in {season}")
+
+    # Extract team abbreviation from matchup (e.g. "DEN vs. LAL" → "DEN")
+    matchup = df.iloc[0]['MATCHUP']
+    team_abbr = matchup.split(' ')[0].strip()
+
+    # Look up team_id
+    all_teams = nba_teams.get_teams()
+    team_info = next((t for t in all_teams if t['abbreviation'] == team_abbr), None)
+    if not team_info:
+        raise ValueError(f"Could not find team for {team_abbr}")
+    team_id = team_info['id']
+
+    results = {'player': player['full_name'], 'team': team_abbr, 'season': season}
+
+    # Fetch player-level offensive play types
+    time.sleep(0.6)
+    off_data = synergyplaytypes.SynergyPlayTypes(
+        player_or_team_abbreviation='P',
+        season=season,
+        season_type_all_star='Regular Season',
+        type_grouping_nullable='offensive',
+        timeout=30,
+    )
+    off_df = off_data.get_data_frames()[0]
+
+    # Fetch player-level defensive play types
+    time.sleep(0.6)
+    def_data = synergyplaytypes.SynergyPlayTypes(
+        player_or_team_abbreviation='P',
+        season=season,
+        season_type_all_star='Regular Season',
+        type_grouping_nullable='defensive',
+        timeout=30,
+    )
+    def_df = def_data.get_data_frames()[0]
+
+    # Filter for this player's team (Synergy player data is keyed by team)
+    off_player = off_df[off_df['TEAM_ID'] == team_id] if not off_df.empty else off_df
+    def_player = def_df[def_df['TEAM_ID'] == team_id] if not def_df.empty else def_df
+
+    results['offensive'] = _format_play_type_df(off_player)
+    results['defensive'] = _format_play_type_df(def_player)
+
+    return results
+
+
+def get_team_synergy_data(team_abbr, season='2024-25'):
+    """
+    Fetch Synergy play type data for a team (offensive + defensive).
+    """
+    all_teams = nba_teams.get_teams()
+    team_info = next((t for t in all_teams if t['abbreviation'] == team_abbr), None)
+    if not team_info:
+        raise ValueError(f"Team '{team_abbr}' not found")
+
+    results = {'team': team_abbr, 'team_name': team_info['full_name'], 'season': season}
+
+    # Offensive
+    time.sleep(0.6)
+    off_data = synergyplaytypes.SynergyPlayTypes(
+        player_or_team_abbreviation='T',
+        season=season,
+        season_type_all_star='Regular Season',
+        type_grouping_nullable='offensive',
+        timeout=30,
+    )
+    off_df = off_data.get_data_frames()[0]
+    team_off = off_df[off_df['TEAM_ABBREVIATION'] == team_abbr] if not off_df.empty else off_df
+
+    # Defensive
+    time.sleep(0.6)
+    def_data = synergyplaytypes.SynergyPlayTypes(
+        player_or_team_abbreviation='T',
+        season=season,
+        season_type_all_star='Regular Season',
+        type_grouping_nullable='defensive',
+        timeout=30,
+    )
+    def_df = def_data.get_data_frames()[0]
+    team_def = def_df[def_df['TEAM_ABBREVIATION'] == team_abbr] if not def_df.empty else def_df
+
+    results['offensive'] = _format_play_type_df(team_off)
+    results['defensive'] = _format_play_type_df(team_def)
+
+    return results
+
+
+def get_opponent_scheme_matchup(player_name, stat, season='2024-25'):
+    """
+    Cross-reference a player's game logs with opponent defensive scheme weaknesses.
+    For each game, look at the opponent's defensive play type data to find
+    exploitable tendencies.
+    """
+    player = find_player(player_name)
+    game_logs = get_player_game_logs(player['id'], season=season)
+    if game_logs.empty:
+        raise ValueError(f"No game data for {player_name} in {season}")
+
+    df = build_game_features(game_logs)
+    stat_upper = stat.upper()
+    if stat_upper not in df.columns:
+        raise ValueError(f"Stat '{stat}' not found")
+
+    # Fetch all team defensive play type data (one call covers all teams)
+    time.sleep(0.6)
+    def_data = synergyplaytypes.SynergyPlayTypes(
+        player_or_team_abbreviation='T',
+        season=season,
+        season_type_all_star='Regular Season',
+        type_grouping_nullable='defensive',
+        timeout=30,
+    )
+    def_df = def_data.get_data_frames()[0]
+
+    # Build per-opponent defensive profile
+    opp_profiles = {}
+    for team_abbr in df['opponent'].unique():
+        team_rows = def_df[def_df['TEAM_ABBREVIATION'] == team_abbr]
+        if team_rows.empty:
+            continue
+        profile = {}
+        for _, row in team_rows.iterrows():
+            pt = row['PLAY_TYPE']
+            profile[pt] = {
+                'ppp_allowed': float(row['PPP']) if not pd.isna(row['PPP']) else None,
+                'fg_pct_allowed': float(row['FG_PCT']) if not pd.isna(row['FG_PCT']) else None,
+                'percentile': float(row['PERCENTILE']) if not pd.isna(row['PERCENTILE']) else None,
+                'freq': float(row['POSS_PCT']) if not pd.isna(row['POSS_PCT']) else None,
+            }
+        opp_profiles[team_abbr] = profile
+
+    # For each opponent, compute: stat avg vs. their worst-defended play types
+    matchups = []
+    for opp, group in df.groupby('opponent'):
+        stat_avg = float(group[stat_upper].mean())
+        stat_games = int(len(group))
+        profile = opp_profiles.get(opp, {})
+
+        # Find weakest play types (highest PPP allowed, lowest percentile = bad defense)
+        weaknesses = []
+        for pt, vals in profile.items():
+            if vals['percentile'] is not None and vals['ppp_allowed'] is not None:
+                weaknesses.append({
+                    'play_type': pt,
+                    'label': PLAY_TYPE_LABELS.get(pt, pt),
+                    **vals,
+                })
+        weaknesses.sort(key=lambda x: x['percentile'])  # lowest percentile = worst defense
+
+        matchups.append({
+            'opponent': opp,
+            'stat_avg': stat_avg,
+            'games': stat_games,
+            'defensive_weaknesses': weaknesses[:3],  # top 3 weakest play types
+            'full_profile': weaknesses,
+        })
+
+    matchups.sort(key=lambda x: x['stat_avg'], reverse=True)
+
+    return {
+        'player': player['full_name'],
+        'stat': stat_upper,
+        'season': season,
+        'matchups': matchups,
+    }
+
+
+def _format_play_type_df(df):
+    """Convert a Synergy play type DataFrame to a list of dicts."""
+    if df.empty:
+        return []
+    records = []
+    for _, row in df.iterrows():
+        pt = row.get('PLAY_TYPE', '')
+        records.append({
+            'play_type': pt,
+            'label': PLAY_TYPE_LABELS.get(pt, pt),
+            'percentile': _safe_float(row.get('PERCENTILE')),
+            'poss_pct': _safe_float(row.get('POSS_PCT')),
+            'ppp': _safe_float(row.get('PPP')),
+            'fg_pct': _safe_float(row.get('FG_PCT')),
+            'efg_pct': _safe_float(row.get('EFG_PCT')),
+            'tov_pct': _safe_float(row.get('TOV_POSS_PCT')),
+            'score_pct': _safe_float(row.get('SCORE_POSS_PCT')),
+            'foul_pct': _safe_float(row.get('SF_POSS_PCT')),
+            'possessions': _safe_int(row.get('POSS')),
+            'points': _safe_int(row.get('PTS')),
+            'gp': _safe_int(row.get('GP')),
+        })
+    records.sort(key=lambda r: r['possessions'] or 0, reverse=True)
+    return records
+
+
+def _safe_float(val):
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def _safe_int(val):
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
 
 
 # ── Full Analysis Pipeline ───────────────────────────────────────────────────

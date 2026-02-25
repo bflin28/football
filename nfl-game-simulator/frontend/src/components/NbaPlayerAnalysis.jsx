@@ -30,6 +30,9 @@ const NbaPlayerAnalysis = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [showSearch, setShowSearch] = useState(false);
   const [activeSection, setActiveSection] = useState('overview');
+  const [playTypeData, setPlayTypeData] = useState(null);
+  const [matchupData, setMatchupData] = useState(null);
+  const [playTypeLoading, setPlayTypeLoading] = useState(false);
 
   useEffect(() => {
     fetch('/api/nba/stats-list')
@@ -52,6 +55,20 @@ const NbaPlayerAnalysis = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchPlayTypes = async () => {
+    setPlayTypeLoading(true);
+    try {
+      const params = new URLSearchParams({ player: playerName, season });
+      const [ptRes, matchRes] = await Promise.all([
+        fetch(`/api/nba/play-types/player?${params}`),
+        fetch(`/api/nba/play-types/matchup?${new URLSearchParams({ player: playerName, stat, season })}`),
+      ]);
+      if (ptRes.ok) setPlayTypeData(await ptRes.json());
+      if (matchRes.ok) setMatchupData(await matchRes.json());
+    } catch { /* non-critical */ }
+    finally { setPlayTypeLoading(false); }
   };
 
   const searchPlayers = async (q) => {
@@ -283,6 +300,159 @@ const NbaPlayerAnalysis = () => {
     };
 
     return <Line data={chartData} options={options} />;
+  };
+
+  // ── Play Type Charts ────────────────────────────────────────────────────
+
+  const renderOffensivePlayTypes = () => {
+    if (!playTypeData?.offensive?.length) return null;
+    const items = playTypeData.offensive.filter(p => p.possessions > 0);
+
+    const chartData = {
+      labels: items.map(p => p.label),
+      datasets: [
+        {
+          label: 'PPP (Points Per Possession)',
+          data: items.map(p => p.ppp),
+          backgroundColor: items.map(p =>
+            p.percentile >= 75 ? 'rgba(39,174,96,0.7)' :
+            p.percentile <= 25 ? 'rgba(231,76,60,0.7)' :
+            'rgba(52,152,219,0.7)'
+          ),
+          borderWidth: 1,
+          borderRadius: 4,
+        }
+      ]
+    };
+
+    const options = {
+      responsive: true,
+      indexAxis: 'y',
+      plugins: {
+        title: { display: true, text: `${playTypeData.team} Offensive Play Types — PPP`, font: { size: 16, weight: 'bold' } },
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            afterLabel: (ctx) => {
+              const p = items[ctx.dataIndex];
+              return [
+                `Percentile: ${(p.percentile * 100).toFixed(0)}th`,
+                `Freq: ${(p.poss_pct * 100).toFixed(1)}%`,
+                `FG%: ${(p.fg_pct * 100).toFixed(1)}%`,
+                `Possessions: ${p.possessions}`,
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Points Per Possession' }, beginAtZero: true },
+      }
+    };
+
+    return <Bar data={chartData} options={options} />;
+  };
+
+  const renderDefensivePlayTypes = () => {
+    if (!playTypeData?.defensive?.length) return null;
+    const items = playTypeData.defensive.filter(p => p.possessions > 0);
+
+    const chartData = {
+      labels: items.map(p => p.label),
+      datasets: [
+        {
+          label: 'PPP Allowed',
+          data: items.map(p => p.ppp),
+          backgroundColor: items.map(p =>
+            p.percentile >= 75 ? 'rgba(39,174,96,0.7)' :   // good defense
+            p.percentile <= 25 ? 'rgba(231,76,60,0.7)' :   // bad defense
+            'rgba(241,196,15,0.7)'
+          ),
+          borderWidth: 1,
+          borderRadius: 4,
+        }
+      ]
+    };
+
+    const options = {
+      responsive: true,
+      indexAxis: 'y',
+      plugins: {
+        title: { display: true, text: `${playTypeData.team} Defensive Play Types — PPP Allowed`, font: { size: 16, weight: 'bold' } },
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            afterLabel: (ctx) => {
+              const p = items[ctx.dataIndex];
+              return [
+                `Percentile: ${(p.percentile * 100).toFixed(0)}th`,
+                `Freq: ${(p.poss_pct * 100).toFixed(1)}%`,
+                `Opp FG%: ${(p.fg_pct * 100).toFixed(1)}%`,
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: 'PPP Allowed (lower = better defense)' }, beginAtZero: true },
+      }
+    };
+
+    return <Bar data={chartData} options={options} />;
+  };
+
+  const renderSchemeMatchupTable = () => {
+    if (!matchupData?.matchups?.length) return null;
+    const mean = data?.summary?.mean || 0;
+    const std = data?.summary?.std || 1;
+
+    return (
+      <div className="scheme-matchup-section">
+        <h3>Opponent Scheme Matchups — {matchupData.stat} vs Defensive Weaknesses</h3>
+        <p className="scheme-subtitle">
+          Each opponent's top defensive weaknesses (lowest Synergy percentile = worst defense in that play type).
+          Green rows = player performed above average vs that team.
+        </p>
+        <div className="opp-table-wrap">
+          <table className="opp-table scheme-table">
+            <thead>
+              <tr>
+                <th>Opponent</th>
+                <th>Avg {matchupData.stat}</th>
+                <th>Games</th>
+                <th>Worst Defensive Play Type</th>
+                <th>PPP Allowed</th>
+                <th>Def Percentile</th>
+              </tr>
+            </thead>
+            <tbody>
+              {matchupData.matchups.map(m => {
+                const diff = m.stat_avg - mean;
+                const weakness = m.defensive_weaknesses[0];
+                return (
+                  <tr key={m.opponent} className={diff > std ? 'above' : diff < -std ? 'below' : ''}>
+                    <td>{m.opponent}</td>
+                    <td className={diff > 0 ? 'positive' : 'negative'}>
+                      {m.stat_avg.toFixed(1)}
+                    </td>
+                    <td>{m.games}</td>
+                    <td>{weakness?.label || '—'}</td>
+                    <td>{weakness?.ppp_allowed?.toFixed(3) || '—'}</td>
+                    <td>
+                      {weakness?.percentile != null ? (
+                        <span className={`pctile-badge ${weakness.percentile <= 0.25 ? 'bad' : weakness.percentile >= 0.75 ? 'good' : 'mid'}`}>
+                          {(weakness.percentile * 100).toFixed(0)}th
+                        </span>
+                      ) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
   };
 
   // ── Factor Cards ──────────────────────────────────────────────────────────
@@ -542,16 +712,20 @@ const NbaPlayerAnalysis = () => {
 
           {/* Section Nav */}
           <div className="section-nav">
-            {['overview', 'distribution', 'factors', 'opponents'].map(s => (
+            {['overview', 'distribution', 'factors', 'opponents', 'playtypes'].map(s => (
               <button
                 key={s}
                 className={`section-btn ${activeSection === s ? 'active' : ''}`}
-                onClick={() => setActiveSection(s)}
+                onClick={() => {
+                  setActiveSection(s);
+                  if (s === 'playtypes' && !playTypeData && !playTypeLoading) fetchPlayTypes();
+                }}
               >
                 {s === 'overview' && 'Z-Score Timeline'}
                 {s === 'distribution' && 'Distribution Tests'}
                 {s === 'factors' && 'Factor Analysis'}
                 {s === 'opponents' && 'By Opponent'}
+                {s === 'playtypes' && 'Play Types'}
               </button>
             ))}
           </div>
@@ -649,6 +823,65 @@ const NbaPlayerAnalysis = () => {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeSection === 'playtypes' && (
+              <div className="play-types-section">
+                {playTypeLoading && (
+                  <div className="nba-loading">
+                    <div className="loading-spinner"></div>
+                    <p>Fetching Synergy play type data...</p>
+                    <p className="loading-sub">This pulls scheme data from NBA.com</p>
+                  </div>
+                )}
+
+                {!playTypeLoading && playTypeData && (
+                  <>
+                    <div className="pt-intro">
+                      <h3>Offensive & Defensive Scheme Breakdown</h3>
+                      <p>Synergy Sports play type data for {playTypeData.team}. Shows how the team generates offense
+                        and defends each play type. Percentile rank: green = top quartile, red = bottom quartile.</p>
+                    </div>
+
+                    {/* Offensive play type frequency breakdown */}
+                    {playTypeData.offensive?.length > 0 && (
+                      <div className="pt-freq-grid">
+                        {playTypeData.offensive.filter(p => p.possessions > 0).map(p => (
+                          <div key={p.play_type} className={`pt-freq-card ${
+                            p.percentile >= 0.75 ? 'elite' : p.percentile <= 0.25 ? 'weak' : ''
+                          }`}>
+                            <div className="pt-freq-name">{p.label}</div>
+                            <div className="pt-freq-ppp">{p.ppp?.toFixed(3) || '—'} PPP</div>
+                            <div className="pt-freq-bar-wrap">
+                              <div className="pt-freq-bar" style={{ width: `${(p.poss_pct || 0) * 100}%` }} />
+                            </div>
+                            <div className="pt-freq-meta">
+                              <span>{((p.poss_pct || 0) * 100).toFixed(1)}% freq</span>
+                              <span className={`pctile-badge ${p.percentile >= 0.75 ? 'good' : p.percentile <= 0.25 ? 'bad' : 'mid'}`}>
+                                {((p.percentile || 0) * 100).toFixed(0)}th pctile
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="charts-grid" style={{ marginTop: 20 }}>
+                      <div className="chart-box">{renderOffensivePlayTypes()}</div>
+                      <div className="chart-box">{renderDefensivePlayTypes()}</div>
+                    </div>
+                  </>
+                )}
+
+                {!playTypeLoading && matchupData && renderSchemeMatchupTable()}
+
+                {!playTypeLoading && !playTypeData && !playTypeLoading && (
+                  <div className="pt-empty">
+                    <p>Click the "Play Types" tab to load Synergy scheme data for the selected player's team.</p>
+                    <button className="analyze-btn" onClick={fetchPlayTypes}>Load Play Types</button>
                   </div>
                 )}
               </div>
