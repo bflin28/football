@@ -8,7 +8,11 @@ __pycache__/
 
 # Data (large parquet files)
 data/
+!nfl-game-simulator/data/
 *.parquet
+
+# Cache files
+.cache/
 
 # OS
 .DS_Store

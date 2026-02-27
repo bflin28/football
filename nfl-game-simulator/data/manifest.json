@@ -1,0 +1,14 @@
+{
+  "players": [
+    {
+      "name": "Nikola Jokić",
+      "slug": "nikola-jokic",
+      "id": 203999,
+      "stat": "PTS",
+      "season": "2025-26",
+      "games": 43,
+      "file_size_kb": 561
+    }
+  ],
+  "exported_at": "2026-02-27T02:05:07.939367+00:00"
+}

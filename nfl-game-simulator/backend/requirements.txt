@@ -5,3 +5,4 @@ nfl-data-py==0.3.0
 pyarrow==13.0.0
 nba_api>=1.4
 scipy>=1.11
+gunicorn==21.2.0
