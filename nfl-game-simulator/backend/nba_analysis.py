@@ -2264,6 +2264,10 @@ def run_das_analysis(player_name, stat, season='2024-25', per_minute=False):
                 'minutes': round(float(row.get('minutes_float', 0)), 1) if row.get('minutes_float') else None,
                 'result': 'W' if row.get('win') else 'L',
                 'plus_minus': int(row.get('PLUS_MINUS', 0)) if pd.notna(row.get('PLUS_MINUS')) else None,
+                # Always include core box-score stats for the per-game table
+                'pts': int(row['PTS']) if pd.notna(row.get('PTS')) else None,
+                'reb': int(row['REB']) if pd.notna(row.get('REB')) else None,
+                'ast': int(row['AST']) if pd.notna(row.get('AST')) else None,
             }
 
     for g in das_results['per_game']:

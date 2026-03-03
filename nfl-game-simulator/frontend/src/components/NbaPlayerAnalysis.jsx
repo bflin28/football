@@ -1090,7 +1090,10 @@ const NbaPlayerAnalysis = () => {
                 <th>Date</th>
                 <th>Opp</th>
                 <th>H/A</th>
-                <th>{statLabel}</th>
+                <th className={stat === 'PTS' ? 'stat-active' : ''}>PTS</th>
+                <th className={stat === 'REB' ? 'stat-active' : ''}>REB</th>
+                <th className={stat === 'AST' ? 'stat-active' : ''}>AST</th>
+                {stat !== 'PTS' && stat !== 'REB' && stat !== 'AST' && <th className="stat-active">{statLabel}</th>}
                 <th>DAS</th>
                 <th>Adj Z</th>
                 <th>Usage</th>
@@ -1118,7 +1121,12 @@ const NbaPlayerAnalysis = () => {
                     <td>{(g.date || '').slice(5)}</td>
                     <td>{g.opponent || '—'}</td>
                     <td>{g.is_home ? 'H' : 'A'}</td>
-                    <td className="stat-val">{g.stat_value != null ? (perMinute ? g.stat_value.toFixed(2) : g.stat_value) : '—'}</td>
+                    <td className={`stat-val${stat === 'PTS' ? ' stat-active' : ''}`}>{g.pts ?? (stat === 'PTS' ? g.stat_value ?? '—' : '—')}</td>
+                    <td className={`stat-val${stat === 'REB' ? ' stat-active' : ''}`}>{g.reb ?? (stat === 'REB' ? g.stat_value ?? '—' : '—')}</td>
+                    <td className={`stat-val${stat === 'AST' ? ' stat-active' : ''}`}>{g.ast ?? (stat === 'AST' ? g.stat_value ?? '—' : '—')}</td>
+                    {stat !== 'PTS' && stat !== 'REB' && stat !== 'AST' && (
+                      <td className="stat-val stat-active">{g.stat_value != null ? (perMinute ? g.stat_value.toFixed(2) : g.stat_value) : '—'}</td>
+                    )}
                     <td className={`das-val ${(g.das || 0) > 1 ? 'das-pos' : (g.das || 0) < -1 ? 'das-neg' : ''}`}>
                       {g.das?.toFixed(2) ?? '—'}
                     </td>
@@ -1134,7 +1142,7 @@ const NbaPlayerAnalysis = () => {
                   </tr>
                   {expandedGame === g.game_id && (
                     <tr className="detail-row">
-                      <td colSpan={13}>
+                      <td colSpan={stat !== 'PTS' && stat !== 'REB' && stat !== 'AST' ? 16 : 15}>
                         {renderGameDetail(g)}
                       </td>
                     </tr>

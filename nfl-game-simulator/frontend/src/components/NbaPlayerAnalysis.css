@@ -601,6 +601,13 @@
   color: #2c3e50;
   font-family: 'Courier New', monospace;
 }
+.stat-val.stat-active {
+  color: #667eea;
+  background: rgba(102, 126, 234, 0.08);
+}
+th.stat-active {
+  color: #667eea !important;
+}
 
 .das-val {
   font-family: 'Courier New', monospace;
