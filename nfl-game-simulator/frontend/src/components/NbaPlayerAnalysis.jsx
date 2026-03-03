@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -18,6 +18,19 @@ ChartJS.register(
   CategoryScale, LinearScale, PointElement, LineElement, BarElement,
   Title, Tooltip, Legend, Filler
 );
+
+/** Safely parse JSON from a fetch response; returns null on empty/invalid body. */
+const safeJson = async (res) => {
+  const text = await res.text();
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { return null; }
+};
+
+/** Convert player name to URL-safe slug: 'Nikola Jokić' → 'nikola-jokic' */
+const slugify = (name) => {
+  const normalized = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return normalized.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+};
 
 const FACTORS = [
   { key: 'das', label: 'Defensive Attention Score (DAS)' },
@@ -71,6 +84,24 @@ const FACTOR_INFO = {
     },
   },
 };
+
+const DEFAULT_STATS = [
+  { key: 'PTS', label: 'Points' },
+  { key: 'AST', label: 'Assists' },
+  { key: 'REB', label: 'Rebounds' },
+  { key: 'STL', label: 'Steals' },
+  { key: 'BLK', label: 'Blocks' },
+  { key: 'TOV', label: 'Turnovers' },
+  { key: 'FG3M', label: '3-Pointers Made' },
+  { key: 'FGM', label: 'Field Goals Made' },
+  { key: 'FGA', label: 'Field Goals Attempted' },
+  { key: 'FTM', label: 'Free Throws Made' },
+  { key: 'FTA', label: 'Free Throws Attempted' },
+  { key: 'OREB', label: 'Offensive Rebounds' },
+  { key: 'DREB', label: 'Defensive Rebounds' },
+  { key: 'PF', label: 'Personal Fouls' },
+  { key: 'PLUS_MINUS', label: 'Plus/Minus' },
+];
 
 const GLOSSARY = {
   categories: [
@@ -161,16 +192,18 @@ const GLOSSARY = {
 const NbaPlayerAnalysis = () => {
   // ── Controls ──
   const [playerName, setPlayerName] = useState('Nikola Jokic');
-  const [stat, setStat] = useState('PTS');
+  const stat = 'PTS';
   const [season, setSeason] = useState('2025-26');
-  const [statsList, setStatsList] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [showSearch, setShowSearch] = useState(false);
   const [perMinute, setPerMinute] = useState(false);
-  const [activeFactor, setActiveFactor] = useState('das');
   const [viewMode, setViewMode] = useState('player');
   const [showFactorInfo, setShowFactorInfo] = useState(false);
   const [error, setError] = useState(null);
+  const [searchHighlight, setSearchHighlight] = useState(-1);
+
+  const searchRef = useRef(null);
+  const activeFactor = 'das';
 
   // ── Player Deep Dive ──
   const [dasData, setDasData] = useState(null);
@@ -191,26 +224,74 @@ const NbaPlayerAnalysis = () => {
 
   const statLabel = perMinute ? `${stat}/min` : stat;
 
+  const autoAnalyzed = useRef(false);
+
   useEffect(() => {
-    fetch('/api/nba/stats-list')
-      .then(r => r.json())
-      .then(setStatsList)
-      .catch(() => {});
-    fetch('/api/nba/available-players')
-      .then(r => r.json())
-      .then(data => setAvailablePlayers(data.players || []))
+    fetch('/data/manifest.json')
+      .then(r => safeJson(r))
+      .then(data => { if (data) setAvailablePlayers(data.players || []); })
       .catch(() => {});
   }, []);
 
-  // ── Player search ──
+  // Auto-analyze on first load
+  useEffect(() => {
+    if (!autoAnalyzed.current && playerName) {
+      autoAnalyzed.current = true;
+      fetchDefensiveAttention();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Click outside to close search dropdown ──
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setShowSearch(false);
+        setSearchHighlight(-1);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // ── Keyboard navigation for search dropdown ──
+  const handleSearchKeyDown = useCallback((e) => {
+    if (!showSearch || searchResults.length === 0) {
+      if (e.key === 'Escape') { setShowSearch(false); }
+      return;
+    }
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSearchHighlight(prev => Math.min(prev + 1, searchResults.length - 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSearchHighlight(prev => Math.max(prev - 1, 0));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (searchHighlight >= 0 && searchHighlight < searchResults.length) {
+          selectPlayer(searchResults[searchHighlight].full_name);
+          setSearchHighlight(-1);
+        }
+        break;
+      case 'Escape':
+        setShowSearch(false);
+        setSearchHighlight(-1);
+        break;
+    }
+  }, [showSearch, searchResults, searchHighlight]);
+
+  // ── Player search (client-side, filters available players from manifest) ──
   const searchPlayers = async (query) => {
-    if (query.length < 2) { setSearchResults([]); return; }
-    try {
-      const res = await fetch(`/api/nba/players/search?q=${encodeURIComponent(query)}`);
-      const json = await res.json();
-      setSearchResults(json);
-      setShowSearch(true);
-    } catch { setSearchResults([]); }
+    if (query.length < 2) { setSearchResults([]); setShowSearch(false); return; }
+    const q = query.toLowerCase();
+    const matches = availablePlayers
+      .filter(p => p.name.toLowerCase().includes(q))
+      .map(p => ({ id: p.id, name: p.name, team: '' }));
+    setSearchResults(matches);
+    setSearchHighlight(-1);
+    setShowSearch(true);
   };
 
   const selectPlayer = (name) => {
@@ -218,6 +299,7 @@ const NbaPlayerAnalysis = () => {
     setShowSearch(false);
     setSearchResults([]);
     setDasData(null);
+    fetchDefensiveAttention(name);
   };
 
   const quickPickPlayer = (name) => {
@@ -225,14 +307,13 @@ const NbaPlayerAnalysis = () => {
     setShowSearch(false);
     setSearchResults([]);
     setDasData(null);
-    // Auto-trigger analyze after state update
-    setTimeout(() => {
-      document.querySelector('.analyze-btn')?.click();
-    }, 50);
+    fetchDefensiveAttention(name);
   };
 
   // ── DAS fetch (Player Deep Dive) ──
-  const fetchDefensiveAttention = async () => {
+  const fetchDefensiveAttention = async (overridePlayer) => {
+    const player = overridePlayer || playerName;
+    if (!player.trim()) return;
     setDasLoading(true);
     setDasProgress(0);
     setError(null);
@@ -241,12 +322,11 @@ const NbaPlayerAnalysis = () => {
       setDasProgress(prev => Math.min(prev + (100 / estSeconds), 95));
     }, 1000);
     try {
-      const params = new URLSearchParams({
-        player: playerName, stat, season, per_minute: perMinute,
-      });
-      const res = await fetch(`/api/nba/defensive-attention?${params}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'DAS analysis failed');
+      const slug = slugify(player);
+      const res = await fetch(`/data/players/${slug}.json`);
+      if (!res.ok) throw new Error(`No data available for ${player}`);
+      const json = await safeJson(res);
+      if (!json) throw new Error(`No data available for ${player}`);
       setDasData(json);
     } catch (e) {
       setError(e.message);
@@ -257,20 +337,15 @@ const NbaPlayerAnalysis = () => {
     }
   };
 
-  // ── Shot chart fetch ──
+  // ── Shot chart fetch (from bundled data) ──
   const fetchShotChart = async (gameId, teamId) => {
     if (!gameId || !dasData?.player?.id || shotChartData[gameId]) return;
     setShotChartLoading(gameId);
     try {
-      const params = new URLSearchParams({
-        game_id: gameId,
-        player_id: dasData.player.id.toString(),
-        team_id: teamId,
-      });
-      const res = await fetch(`/api/nba/game/shot-chart?${params}`);
-      const json = await res.json();
-      if (res.ok) {
-        setShotChartData(prev => ({ ...prev, [gameId]: json }));
+      // Shot charts are embedded in the player JSON if available
+      const sc = dasData?.shot_charts?.[gameId];
+      if (sc) {
+        setShotChartData(prev => ({ ...prev, [gameId]: sc }));
       }
     } catch { /* non-critical */ }
     finally { setShotChartLoading(null); }
@@ -293,11 +368,13 @@ const NbaPlayerAnalysis = () => {
     setError(null);
 
     try {
-      const topRes = await fetch(
-        `/api/nba/top-players?${new URLSearchParams({ stat, season, limit: '20' })}`
-      );
-      const players = await topRes.json();
-      if (!topRes.ok) throw new Error(players.error || 'Failed to fetch top players');
+      // Use manifest players instead of API
+      const players = availablePlayers.map(p => ({
+        player_name: p.name,
+        team: '',
+        stat_value: 0,
+      }));
+      if (!players.length) throw new Error('No pre-exported players available');
 
       const allGames = [];
       const playerSummaries = [];
@@ -307,14 +384,12 @@ const NbaPlayerAnalysis = () => {
         setLeaderboardProgress({ current: i + 1, total: players.length, playerName: p.player_name });
 
         try {
-          const dasRes = await fetch(
-            `/api/nba/defensive-attention?${new URLSearchParams({
-              player: p.player_name, stat, season, per_minute: perMinute,
-            })}`
-          );
-          const dasJson = await dasRes.json();
+          const slug = slugify(p.player_name);
+          const dasRes = await fetch(`/data/players/${slug}.json`);
+          const dasJson = await safeJson(dasRes);
+          if (!dasJson) continue;
 
-          if (dasRes.ok && dasJson.das?.per_game) {
+          if (dasJson.das?.per_game) {
             for (const game of dasJson.das.per_game) {
               if (game.das != null && game.stat_value != null) {
                 allGames.push({
@@ -326,10 +401,14 @@ const NbaPlayerAnalysis = () => {
             }
 
             const validGames = dasJson.das.per_game.filter(g => g.das != null);
+            const allStatGames = dasJson.das.per_game.filter(g => g.stat_value != null);
+            const avgStat = allStatGames.length > 0
+              ? allStatGames.reduce((sum, g) => sum + g.stat_value, 0) / allStatGames.length
+              : 0;
             playerSummaries.push({
               player_name: p.player_name,
               team: p.team,
-              avg_stat: p.stat_value,
+              avg_stat: avgStat,
               avg_das: validGames.length > 0
                 ? validGames.reduce((sum, g) => sum + g.das, 0) / validGames.length
                 : 0,
@@ -1161,8 +1240,8 @@ const NbaPlayerAnalysis = () => {
     <div className="nba-analysis">
       {/* Header */}
       <div className="nba-header">
-        <h1>NBA Factor Analysis</h1>
-        <p>Quantify the hidden signals that drive player stat lines</p>
+        <h1>Defensive Attention Score</h1>
+        <p>Measure how much a defense focuses on stopping a player — and how it moves their stat line</p>
         <button className="glossary-btn" onClick={() => setShowGlossary(true)}>
           Glossary
         </button>
@@ -1231,24 +1310,8 @@ const NbaPlayerAnalysis = () => {
       {/* Controls Bar */}
       <div className="nba-controls">
         <div className="control-group">
-          <label>Factor</label>
-          <select value={activeFactor} onChange={e => setActiveFactor(e.target.value)}>
-            {FACTORS.map(f => (
-              <option key={f.key} value={f.key}>{f.label}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="control-group">
-          <label>Stat</label>
-          <select value={stat} onChange={e => setStat(e.target.value)}>
-            {statsList.map(s => <option key={s.key || s} value={s.key || s}>{s.label || s.key || s}</option>)}
-          </select>
-        </div>
-
-        <div className="control-group">
-          <label>Season</label>
-          <select value={season} onChange={e => setSeason(e.target.value)}>
+          <label htmlFor="season-select">Season</label>
+          <select id="season-select" value={season} onChange={e => setSeason(e.target.value)}>
             <option value="2025-26">2025-26</option>
             <option value="2024-25">2024-25</option>
             <option value="2023-24">2023-24</option>
@@ -1257,17 +1320,17 @@ const NbaPlayerAnalysis = () => {
 
         <div className="control-group">
           <label>Mode</label>
-          <div className="rate-toggle">
-            <button className={`rate-btn ${!perMinute ? 'active' : ''}`} onClick={() => setPerMinute(false)}>Raw</button>
-            <button className={`rate-btn ${perMinute ? 'active' : ''}`} onClick={() => setPerMinute(true)}>Per Min</button>
+          <div className="rate-toggle" role="radiogroup" aria-label="Mode">
+            <button className={`rate-btn ${!perMinute ? 'active' : ''}`} role="radio" aria-checked={!perMinute} onClick={() => setPerMinute(false)}>Raw</button>
+            <button className={`rate-btn ${perMinute ? 'active' : ''}`} role="radio" aria-checked={perMinute} onClick={() => setPerMinute(true)}>Per Min</button>
           </div>
         </div>
 
-        <div className="view-toggle">
-          <button className={`view-btn ${viewMode === 'player' ? 'active' : ''}`} onClick={() => setViewMode('player')}>
+        <div className="view-toggle" role="tablist" aria-label="View">
+          <button className={`view-btn ${viewMode === 'player' ? 'active' : ''}`} role="tab" aria-selected={viewMode === 'player'} onClick={() => setViewMode('player')}>
             Player Deep Dive
           </button>
-          <button className={`view-btn ${viewMode === 'leaderboard' ? 'active' : ''}`} onClick={() => setViewMode('leaderboard')}>
+          <button className={`view-btn ${viewMode === 'leaderboard' ? 'active' : ''}`} role="tab" aria-selected={viewMode === 'leaderboard'} onClick={() => setViewMode('leaderboard')}>
             League Leaderboard
           </button>
         </div>
@@ -1279,19 +1342,34 @@ const NbaPlayerAnalysis = () => {
       {viewMode === 'player' && (
         <div className="player-view">
           <div className="player-search-row">
-            <div className="control-group player-search">
-              <label>Player</label>
+            <div className="control-group player-search" ref={searchRef}>
+              <label htmlFor="player-search-input">Player</label>
               <div className="search-wrapper">
                 <input
+                  id="player-search-input"
                   value={playerName}
                   onChange={e => { setPlayerName(e.target.value); searchPlayers(e.target.value); }}
                   onFocus={() => searchResults.length > 0 && setShowSearch(true)}
+                  onKeyDown={handleSearchKeyDown}
                   placeholder="Search player..."
+                  autoComplete="off"
+                  role="combobox"
+                  aria-expanded={showSearch && searchResults.length > 0}
+                  aria-controls="player-search-listbox"
+                  aria-activedescendant={searchHighlight >= 0 ? `search-option-${searchHighlight}` : undefined}
                 />
                 {showSearch && searchResults.length > 0 && (
-                  <div className="search-dropdown">
-                    {searchResults.map(p => (
-                      <div key={p.id} className="search-item" onClick={() => selectPlayer(p.full_name)}>
+                  <div className="search-dropdown" id="player-search-listbox" role="listbox">
+                    {searchResults.map((p, i) => (
+                      <div
+                        key={p.id}
+                        id={`search-option-${i}`}
+                        className={`search-item ${i === searchHighlight ? 'search-item-highlighted' : ''}`}
+                        role="option"
+                        aria-selected={i === searchHighlight ? 'true' : 'false'}
+                        onClick={() => { selectPlayer(p.full_name); setSearchHighlight(-1); }}
+                        onMouseEnter={() => setSearchHighlight(i)}
+                      >
                         {p.full_name}
                       </div>
                     ))}
@@ -1299,7 +1377,7 @@ const NbaPlayerAnalysis = () => {
                 )}
               </div>
             </div>
-            <button className="analyze-btn" onClick={fetchDefensiveAttention} disabled={dasLoading}>
+            <button className="analyze-btn" onClick={() => fetchDefensiveAttention()} disabled={dasLoading || !playerName.trim()}>
               {dasLoading ? 'Analyzing...' : 'Analyze'}
             </button>
           </div>
@@ -1319,7 +1397,7 @@ const NbaPlayerAnalysis = () => {
           {dasLoading && (
             <div className="das-loading">
               <div className="loading-spinner" />
-              <p>Computing {FACTORS.find(f => f.key === activeFactor)?.label}...</p>
+              <p>Computing Defensive Attention Score...</p>
               <div className="das-progress-bar-wrap">
                 <div className="das-progress-bar" style={{ width: `${dasProgress}%` }} />
               </div>
@@ -1342,7 +1420,7 @@ const NbaPlayerAnalysis = () => {
         <div className="leaderboard-view">
           {!leaderboardLoading && !leaderboardData && (
             <div className="leaderboard-start">
-              <p>Compute {FACTORS.find(f => f.key === activeFactor)?.label} for the top 20 {stat} leaders this season.</p>
+              <p>Compute DAS for the top 20 {stat} leaders this season.</p>
               <button className="analyze-btn" onClick={loadLeaderboard}>Load Leaderboard</button>
               <p className="loading-sub">First run takes 15-30 min (cached after). Results appear as each player completes.</p>
             </div>
@@ -1363,7 +1441,7 @@ const NbaPlayerAnalysis = () => {
             <>
               {/* Top Games Table */}
               <div className="leaderboard-table-wrap">
-                <h3>Top Games by {FACTORS.find(f => f.key === activeFactor)?.label}</h3>
+                <h3>Top Games by DAS</h3>
                 <table className="game-log-table">
                   <thead>
                     <tr>
