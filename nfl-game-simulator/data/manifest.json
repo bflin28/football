@@ -1,6 +1,33 @@
 {
   "players": [
     {
+      "name": "Anthony Edwards",
+      "slug": "anthony-edwards",
+      "id": 1630162,
+      "stat": "PTS",
+      "season": "2025-26",
+      "games": 51,
+      "file_size_kb": 97
+    },
+    {
+      "name": "Jaylen Brown",
+      "slug": "jaylen-brown",
+      "id": 1627759,
+      "stat": "PTS",
+      "season": "2025-26",
+      "games": 51,
+      "file_size_kb": 97
+    },
+    {
+      "name": "Luka Dončić",
+      "slug": "luka-doncic",
+      "id": 1629029,
+      "stat": "PTS",
+      "season": "2025-26",
+      "games": 48,
+      "file_size_kb": 92
+    },
+    {
       "name": "Nikola Jokić",
       "slug": "nikola-jokic",
       "id": 203999,
@@ -8,7 +35,25 @@
       "season": "2025-26",
       "games": 43,
       "file_size_kb": 561
+    },
+    {
+      "name": "Shai Gilgeous-Alexander",
+      "slug": "shai-gilgeous-alexander",
+      "id": 1628983,
+      "stat": "PTS",
+      "season": "2025-26",
+      "games": 51,
+      "file_size_kb": 97
+    },
+    {
+      "name": "Tyrese Maxey",
+      "slug": "tyrese-maxey",
+      "id": 1630178,
+      "stat": "PTS",
+      "season": "2025-26",
+      "games": 56,
+      "file_size_kb": 107
     }
   ],
-  "exported_at": "2026-02-27T02:05:07.939367+00:00"
+  "exported_at": "2026-03-03T22:18:19.567956+00:00"
 }

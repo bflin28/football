@@ -50,8 +50,8 @@ def slugify(name):
     return slug.strip('-')
 
 
-def export_player(player_name, stat='PTS', season='2025-26', per_minute=False):
-    """Export a single player's DAS + all shot charts to JSON."""
+def export_player(player_name, stat='PTS', season='2025-26', per_minute=False, skip_shot_charts=False):
+    """Export a single player's DAS + optionally shot charts to JSON."""
     slug = slugify(player_name)
     out_path = os.path.join(DATA_DIR, f'{slug}.json')
 
@@ -73,40 +73,43 @@ def export_player(player_name, stat='PTS', season='2025-26', per_minute=False):
     per_game = das_data.get('per_game', [])
     print(f'    DAS: {len(per_game)} games, β={das_data.get("regression", {}).get("beta", "?"):.2f}')
 
-    # ── Step 2: Fetch all shot charts ──
+    # ── Step 2: Fetch shot charts (unless skipped) ──
     shot_charts = {}
-    cached_sc = 0
-    fetched_sc = 0
-    failed_sc = 0
+    if skip_shot_charts:
+        print(f'    Shot charts: skipped')
+    else:
+        cached_sc = 0
+        fetched_sc = 0
+        failed_sc = 0
 
-    for i, game in enumerate(per_game):
-        game_id = game.get('game_id', '')
-        team_id = game.get('team_id', '')
-        if not game_id or not player_id:
-            continue
+        for i, game in enumerate(per_game):
+            game_id = game.get('game_id', '')
+            team_id = game.get('team_id', '')
+            if not game_id or not player_id:
+                continue
 
-        sc_cache_key = f'shot_chart|{game_id}|{player_id}'
+            sc_cache_key = f'shot_chart|{game_id}|{player_id}'
 
-        # Check endpoint cache
-        if sc_cache_key in _nba_cache:
-            shot_charts[game_id] = _nba_cache[sc_cache_key]
-            cached_sc += 1
-            continue
+            # Check endpoint cache
+            if sc_cache_key in _nba_cache:
+                shot_charts[game_id] = _nba_cache[sc_cache_key]
+                cached_sc += 1
+                continue
 
-        # Fetch fresh
-        try:
-            time.sleep(0.3)  # Rate limit
-            result = fetch_game_shot_chart(game_id, int(player_id), int(team_id))
-            shot_charts[game_id] = result
-            _nba_cache[sc_cache_key] = result
-            fetched_sc += 1
-            if (fetched_sc % 5 == 0):
-                print(f'    Shot charts: {cached_sc + fetched_sc}/{len(per_game)} ({fetched_sc} fetched)...')
-        except Exception as e:
-            print(f'    Shot chart FAILED for {game_id}: {e}')
-            failed_sc += 1
+            # Fetch fresh
+            try:
+                time.sleep(0.3)  # Rate limit
+                result = fetch_game_shot_chart(game_id, int(player_id), int(team_id))
+                shot_charts[game_id] = result
+                _nba_cache[sc_cache_key] = result
+                fetched_sc += 1
+                if (fetched_sc % 5 == 0):
+                    print(f'    Shot charts: {cached_sc + fetched_sc}/{len(per_game)} ({fetched_sc} fetched)...')
+            except Exception as e:
+                print(f'    Shot chart FAILED for {game_id}: {e}')
+                failed_sc += 1
 
-    print(f'    Shot charts: {cached_sc} cached, {fetched_sc} fetched, {failed_sc} failed')
+        print(f'    Shot charts: {cached_sc} cached, {fetched_sc} fetched, {failed_sc} failed')
 
     # ── Step 3: Build export JSON ──
     export_data = {
@@ -181,15 +184,15 @@ def update_manifest(player_entries):
     print(f'\n  Manifest updated: {len(manifest["players"])} players')
 
 
-def export_all_cached(stat='PTS', season='2025-26'):
+def export_all_cached(stat='PTS', season='2025-26', skip_shot_charts=False):
     """Re-export all players that have cached DAS results."""
     entries = []
-    for key in _nba_cache._cache:
+    for key in _nba_cache._data:
         if key.startswith(f'das|') and f'|{stat}|{season}|' in key:
             parts = key.split('|')
             player_name = parts[1]
             try:
-                entry = export_player(player_name, stat=stat, season=season)
+                entry = export_player(player_name, stat=stat, season=season, skip_shot_charts=skip_shot_charts)
                 entries.append(entry)
             except Exception as e:
                 print(f'    FAILED: {player_name} — {e}')
@@ -203,6 +206,7 @@ if __name__ == '__main__':
     parser.add_argument('--season', default='2025-26', help='NBA season (default: 2025-26)')
     parser.add_argument('--all', action='store_true', help='Re-export all cached DAS results')
     parser.add_argument('--per-minute', action='store_true', help='Use per-minute normalization')
+    parser.add_argument('--skip-shot-charts', action='store_true', help='Skip shot chart fetching (faster)')
     args = parser.parse_args()
 
     print(f'\n{"=" * 60}')
@@ -214,11 +218,11 @@ if __name__ == '__main__':
 
     if args.all:
         print(f'\n  Re-exporting all cached players...')
-        entries = export_all_cached(stat=args.stat, season=args.season)
+        entries = export_all_cached(stat=args.stat, season=args.season, skip_shot_charts=args.skip_shot_charts)
     elif args.players:
         for name in args.players:
             try:
-                entry = export_player(name, stat=args.stat, season=args.season, per_minute=args.per_minute)
+                entry = export_player(name, stat=args.stat, season=args.season, per_minute=args.per_minute, skip_shot_charts=args.skip_shot_charts)
                 entries.append(entry)
             except Exception as e:
                 print(f'\n  FAILED: {name} — {e}')

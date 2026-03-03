@@ -208,11 +208,11 @@
 
 .nba-controls {
   display: flex;
-  gap: 12px;
+  gap: 16px;
   align-items: flex-end;
   flex-wrap: wrap;
   margin-bottom: 24px;
-  padding: 16px;
+  padding: 14px 20px;
   background: #f8f9fa;
   border-radius: 12px;
   border: 1px solid #e9ecef;
@@ -222,6 +222,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 0 0 auto;
 }
 
 .control-group label {
@@ -238,6 +239,7 @@
   border-radius: 6px;
   font-size: 0.9rem;
   background: white;
+  min-width: 120px;
 }
 
 .control-group select:focus,
@@ -341,8 +343,13 @@
   font-size: 0.9rem;
 }
 
-.search-item:hover {
+.search-item:hover,
+.search-item-highlighted {
   background: #f0f4ff;
+}
+
+.search-item-highlighted {
+  outline: none;
 }
 
 /* ── Analyze Button ──────────────────────────────────────────────────── */
@@ -1272,7 +1279,7 @@ th.stat-active {
 .glossary-btn {
   position: absolute;
   top: 12px;
-  right: 16px;
+  right: 0;
   padding: 6px 14px;
   background: rgba(255,255,255,0.15);
   border: 1px solid rgba(255,255,255,0.3);
@@ -1282,6 +1289,13 @@ th.stat-active {
   color: rgba(255,255,255,0.9);
   cursor: pointer;
   transition: all 0.2s;
+}
+
+@media (max-width: 768px) {
+  .glossary-btn {
+    position: static;
+    margin-top: 8px;
+  }
 }
 
 .glossary-btn:hover {

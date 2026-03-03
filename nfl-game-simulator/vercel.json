@@ -3,6 +3,6 @@
   "outputDirectory": "frontend/dist",
   "framework": null,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" }
+    { "source": "/((?!data/).*)", "destination": "/index.html" }
   ]
 }
