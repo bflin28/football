@@ -941,6 +941,171 @@ const NbaPlayerAnalysis = () => {
     );
   };
 
+  // ── Render: Play Type Breakdown ──
+  const renderPlayTypeBreakdown = () => {
+    const synergy = dasData?.synergy;
+    if (!synergy?.offensive?.length) return null;
+
+    // Friendly labels for play types (API keys vary in casing)
+    const PLAY_LABELS = {
+      Transition: 'Transition', Isolation: 'Isolation',
+      PRBallHandler: 'Pick & Roll (Ball Handler)', PRRollman: 'Pick & Roll (Roll Man)',
+      PRRollMan: 'Pick & Roll (Roll Man)', Postup: 'Post Up', Spotup: 'Spot Up',
+      Handoff: 'Handoff', Cut: 'Cut', OffScreen: 'Off Screen',
+      OffRebound: 'Putbacks', Misc: 'Misc',
+    };
+
+    // Filter to meaningful play types (>= 10 possessions) and fix labels
+    const offTypes = synergy.offensive
+      .filter(pt => (pt.possessions || 0) >= 10)
+      .map(pt => ({ ...pt, label: PLAY_LABELS[pt.play_type] || pt.label || pt.play_type }));
+    if (offTypes.length === 0) return null;
+
+    // Color by percentile
+    const pctileColor = (pctile, alpha = 0.75) => {
+      if (pctile == null) return `rgba(149,165,166,${alpha})`;
+      if (pctile >= 0.75) return `rgba(39,174,96,${alpha})`;   // green — elite
+      if (pctile >= 0.50) return `rgba(102,126,234,${alpha})`; // indigo — above avg
+      if (pctile >= 0.25) return `rgba(149,165,166,${alpha})`; // gray — average
+      return `rgba(231,76,60,${alpha})`;                        // red — below avg
+    };
+
+    const pctileBorder = (pctile) => {
+      if (pctile == null) return 'rgba(149,165,166,1)';
+      if (pctile >= 0.75) return 'rgba(39,174,96,1)';
+      if (pctile >= 0.50) return 'rgba(102,126,234,1)';
+      if (pctile >= 0.25) return 'rgba(149,165,166,1)';
+      return 'rgba(231,76,60,1)';
+    };
+
+    const pctileClass = (pctile) => {
+      if (pctile == null) return 'average';
+      if (pctile >= 0.75) return 'elite';
+      if (pctile >= 0.25) return 'average';
+      return 'poor';
+    };
+
+    // Top 5 for summary cards
+    const topTypes = offTypes.slice(0, 5);
+
+    return (
+      <div className="play-type-section">
+        <h3 className="play-type-heading">Scoring Play Types</h3>
+        <p className="section-subtitle">
+          How {dasData.player?.name || 'this player'} creates offense — color shows efficiency percentile
+        </p>
+
+        <div className="charts-grid">
+          {/* Left: Possession Distribution */}
+          <div className="chart-box">
+            <Bar
+              data={{
+                labels: offTypes.map(pt => pt.label),
+                datasets: [{
+                  label: '% of Possessions',
+                  data: offTypes.map(pt => ((pt.poss_pct || 0) * 100).toFixed(1)),
+                  backgroundColor: offTypes.map(pt => pctileColor(pt.percentile)),
+                  borderColor: offTypes.map(pt => pctileBorder(pt.percentile)),
+                  borderWidth: 1,
+                }],
+              }}
+              options={{
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  title: { display: true, text: 'Offensive Play Type Distribution', font: { size: 13, weight: '600' }, color: '#2c3e50' },
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (ctx) => `${ctx.raw}% of possessions`,
+                      afterLabel: (ctx) => {
+                        const pt = offTypes[ctx.dataIndex];
+                        return [
+                          `PPP: ${pt.ppp != null ? pt.ppp.toFixed(2) : '—'}`,
+                          `Percentile: ${pt.percentile != null ? (pt.percentile * 100).toFixed(0) + 'th' : '—'}`,
+                          `FG%: ${pt.fg_pct != null ? (pt.fg_pct * 100).toFixed(1) + '%' : '—'}`,
+                          `${pt.possessions} possessions / ${pt.gp} games`,
+                        ];
+                      }
+                    }
+                  },
+                },
+                scales: {
+                  x: { title: { display: true, text: '% of Possessions', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
+                  y: { ticks: { font: { size: 11, weight: '500' } }, grid: { display: false } },
+                },
+              }}
+              height={Math.max(200, offTypes.length * 32)}
+            />
+          </div>
+
+          {/* Right: PPP Efficiency */}
+          <div className="chart-box">
+            <Bar
+              data={{
+                labels: offTypes.map(pt => pt.label),
+                datasets: [{
+                  label: 'Points Per Possession',
+                  data: offTypes.map(pt => pt.ppp != null ? pt.ppp.toFixed(2) : 0),
+                  backgroundColor: offTypes.map(pt => pctileColor(pt.percentile)),
+                  borderColor: offTypes.map(pt => pctileBorder(pt.percentile)),
+                  borderWidth: 1,
+                }],
+              }}
+              options={{
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  title: { display: true, text: 'Efficiency by Play Type (PPP)', font: { size: 13, weight: '600' }, color: '#2c3e50' },
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (ctx) => `${ctx.raw} PPP`,
+                      afterLabel: (ctx) => {
+                        const pt = offTypes[ctx.dataIndex];
+                        return [
+                          `eFG%: ${pt.efg_pct != null ? (pt.efg_pct * 100).toFixed(1) + '%' : '—'}`,
+                          `Score%: ${pt.score_pct != null ? (pt.score_pct * 100).toFixed(1) + '%' : '—'}`,
+                          `TO%: ${pt.tov_pct != null ? (pt.tov_pct * 100).toFixed(1) + '%' : '—'}`,
+                        ];
+                      }
+                    }
+                  },
+                },
+                scales: {
+                  x: { title: { display: true, text: 'Points Per Possession', font: { size: 11 } }, min: 0, max: 1.6, grid: { color: 'rgba(0,0,0,0.04)' } },
+                  y: { ticks: { font: { size: 11, weight: '500' } }, grid: { display: false } },
+                },
+              }}
+              height={Math.max(200, offTypes.length * 32)}
+            />
+          </div>
+        </div>
+
+        {/* Summary cards for top play types */}
+        <div className="play-type-summary">
+          {topTypes.map(pt => (
+            <div className="play-type-card" key={pt.play_type}>
+              <div className="play-type-card-name">{pt.label}</div>
+              <div className="play-type-card-pct">{((pt.poss_pct || 0) * 100).toFixed(1)}%</div>
+              <div className={`play-type-card-ppp ${pctileClass(pt.percentile)}`}>
+                {pt.ppp != null ? pt.ppp.toFixed(2) : '—'} PPP
+              </div>
+              {pt.percentile != null && (
+                <span className={`pctile-badge ${pctileClass(pt.percentile)}`}>
+                  {(pt.percentile * 100).toFixed(0)}th %ile
+                </span>
+              )}
+              <div className="play-type-card-poss">{pt.possessions} poss</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   // ── Render: Player Deep Dive charts ──
   const renderPlayerCharts = () => {
     const das = dasData.das;
@@ -1409,6 +1574,7 @@ const NbaPlayerAnalysis = () => {
           {dasData && !dasLoading && (
             <>
               {renderMiniStatsBar()}
+              {renderPlayTypeBreakdown()}
               {renderPlayerCharts()}
             </>
           )}

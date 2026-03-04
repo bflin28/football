@@ -7,7 +7,7 @@
       "stat": "PTS",
       "season": "2025-26",
       "games": 51,
-      "file_size_kb": 97
+      "file_size_kb": 104
     },
     {
       "name": "Jaylen Brown",
@@ -16,7 +16,7 @@
       "stat": "PTS",
       "season": "2025-26",
       "games": 51,
-      "file_size_kb": 97
+      "file_size_kb": 104
     },
     {
       "name": "Luka Dončić",
@@ -24,8 +24,8 @@
       "id": 1629029,
       "stat": "PTS",
       "season": "2025-26",
-      "games": 48,
-      "file_size_kb": 92
+      "games": 49,
+      "file_size_kb": 100
     },
     {
       "name": "Nikola Jokić",
@@ -33,8 +33,8 @@
       "id": 203999,
       "stat": "PTS",
       "season": "2025-26",
-      "games": 43,
-      "file_size_kb": 561
+      "games": 46,
+      "file_size_kb": 94
     },
     {
       "name": "Shai Gilgeous-Alexander",
@@ -43,7 +43,7 @@
       "stat": "PTS",
       "season": "2025-26",
       "games": 51,
-      "file_size_kb": 97
+      "file_size_kb": 104
     },
     {
       "name": "Tyrese Maxey",
@@ -52,8 +52,8 @@
       "stat": "PTS",
       "season": "2025-26",
       "games": 56,
-      "file_size_kb": 107
+      "file_size_kb": 114
     }
   ],
-  "exported_at": "2026-03-03T22:18:19.567956+00:00"
+  "exported_at": "2026-03-04T18:00:47.386722+00:00"
 }
