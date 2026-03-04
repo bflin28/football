@@ -228,6 +228,7 @@ const NbaPlayerAnalysis = () => {
   const [gameStoryExpanded, setGameStoryExpanded] = useState(null);
   const [gameStoryIndex, setGameStoryIndex] = useState(null);
   const [gameStoryFilter, setGameStoryFilter] = useState('all');
+  const [gameStorySortBy, setGameStorySortBy] = useState('chronological');
 
   const statLabel = perMinute ? `${stat}/min` : stat;
 
@@ -1162,12 +1163,18 @@ const NbaPlayerAnalysis = () => {
     });
 
     // Filter actions
-    const filteredActions = actions.filter(a => {
+    const filteredActionsUnsorted = actions.filter(a => {
       if (gameStoryFilter === 'all') return true;
       if (gameStoryFilter === 'scoring') return a.points > 0;
       if (gameStoryFilter === 'key') return !!momentMap[a.idx];
+      if (gameStoryFilter === 'impact') return (a.pis || 0) >= 5;
       return true;
     });
+
+    // Sort
+    const filteredActions = gameStorySortBy === 'impact'
+      ? [...filteredActionsUnsorted].sort((a, b) => (b.pis || 0) - (a.pis || 0))
+      : filteredActionsUnsorted;
 
     const periodLabel = (p) => p <= 4 ? `Q${p}` : `OT${p - 4}`;
 
@@ -1266,16 +1273,29 @@ const NbaPlayerAnalysis = () => {
         <div className="game-story-pbp-section">
           <div className="pbp-header">
             <h4>Play-by-Play</h4>
-            <div className="pbp-filters">
-              {['all', 'scoring', 'key'].map(f => (
-                <button
-                  key={f}
-                  className={`pbp-filter-btn ${gameStoryFilter === f ? 'active' : ''}`}
-                  onClick={() => setGameStoryFilter(f)}
-                >
-                  {f === 'all' ? `All (${actions.length})` : f === 'scoring' ? `Scoring (${actions.filter(a => a.points > 0).length})` : `Key Moments (${Object.keys(momentMap).length})`}
+            <div className="pbp-controls">
+              <div className="pbp-filters">
+                {['all', 'scoring', 'key', 'impact'].map(f => (
+                  <button
+                    key={f}
+                    className={`pbp-filter-btn ${gameStoryFilter === f ? 'active' : ''}`}
+                    onClick={() => setGameStoryFilter(f)}
+                  >
+                    {f === 'all' ? `All (${actions.length})`
+                      : f === 'scoring' ? `Scoring (${actions.filter(a => a.points > 0).length})`
+                      : f === 'key' ? `Key Moments (${Object.keys(momentMap).length})`
+                      : `High Impact (${actions.filter(a => (a.pis || 0) >= 5).length})`}
+                  </button>
+                ))}
+              </div>
+              <div className="pbp-sort-toggle">
+                <button className={`pbp-sort-btn ${gameStorySortBy === 'chronological' ? 'active' : ''}`} onClick={() => setGameStorySortBy('chronological')}>
+                  Chronological
                 </button>
-              ))}
+                <button className={`pbp-sort-btn ${gameStorySortBy === 'impact' ? 'active' : ''}`} onClick={() => setGameStorySortBy('impact')}>
+                  By Impact
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1287,6 +1307,7 @@ const NbaPlayerAnalysis = () => {
                   <th>Action</th>
                   <th>Score</th>
                   <th>PTS</th>
+                  <th className="pbp-pis-col">Impact</th>
                   <th>Tags</th>
                 </tr>
               </thead>
@@ -1302,6 +1323,15 @@ const NbaPlayerAnalysis = () => {
                       <td className="pbp-desc">{a.description || '—'}</td>
                       <td className="pbp-score">{a.score_away}-{a.score_home}</td>
                       <td className="pbp-running-pts">{a.running_pts}</td>
+                      <td className="pbp-pis">
+                        {a.pis != null && (
+                          <span className={`pis-pill ${a.pis >= 8 ? 'pis-elite' : a.pis >= 5 ? 'pis-high' : a.pis >= 2 ? 'pis-mid' : 'pis-low'}`}
+                            title={a.pis_components ? `Base: ${a.pis_components.base} | Leverage: ${a.pis_components.leverage} | Difficulty: ${a.pis_components.difficulty} | Moment: ${a.pis_components.moment}` : ''}
+                          >
+                            {a.pis.toFixed(1)}
+                          </span>
+                        )}
+                      </td>
                       <td className="pbp-badges">
                         {badges.map((b, bi) => (
                           <span key={bi} className={`pbp-badge ${BADGE_STYLES[b.type]?.className || ''}`}>
@@ -1349,27 +1379,34 @@ const NbaPlayerAnalysis = () => {
           </div>
         )}
 
-        {/* Key Moments Summary */}
-        {Object.keys(momentsByType).length > 0 && (
+        {/* Top Plays to Watch — ranked by PIS */}
+        {actions.some(a => (a.pis || 0) >= 5) && (
           <div className="game-story-key-moments">
-            <h4>Key Moments to Watch</h4>
-            <div className="key-moments-grid">
-              {Object.entries(momentsByType).map(([type, moments]) => (
-                <div key={type} className="key-moment-group">
-                  <div className={`key-moment-type ${BADGE_STYLES[type]?.className || ''}`}>
-                    {BADGE_STYLES[type]?.label || type} ({moments.length})
-                  </div>
-                  <ul className="key-moment-list">
-                    {moments.map((m, mi) => (
-                      <li key={mi}>
-                        <span className="km-time">{periodLabel(m.action.period)} {m.action.clock}</span>
-                        <span className="km-desc">{m.action.description}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
+            <h4>Top Plays to Watch</h4>
+            <ol className="top-plays-list">
+              {[...actions]
+                .filter(a => (a.pis || 0) >= 5)
+                .sort((a, b) => (b.pis || 0) - (a.pis || 0))
+                .slice(0, 8)
+                .map((a, i) => {
+                  const badges = momentMap[a.idx] || [];
+                  return (
+                    <li key={a.idx} className="top-play-item">
+                      <span className="tp-rank">#{i + 1}</span>
+                      <span className={`pis-pill ${a.pis >= 8 ? 'pis-elite' : 'pis-high'}`}>
+                        {a.pis.toFixed(1)}
+                      </span>
+                      <span className="tp-time">{periodLabel(a.period)} {a.clock}</span>
+                      <span className="tp-desc">{a.description}</span>
+                      {badges.map((b, bi) => (
+                        <span key={bi} className={`pbp-badge ${BADGE_STYLES[b.type]?.className || ''}`}>
+                          {BADGE_STYLES[b.type]?.label || b.label}
+                        </span>
+                      ))}
+                    </li>
+                  );
+                })}
+            </ol>
           </div>
         )}
       </div>
