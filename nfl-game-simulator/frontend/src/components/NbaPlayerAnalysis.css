@@ -1456,3 +1456,84 @@ th.stat-active {
   color: #95a5a6;
   margin-top: 2px;
 }
+
+/* ── Play Type Section ──────────────────────────────────────── */
+.play-type-section {
+  margin: 20px 0;
+}
+
+.play-type-heading {
+  color: #2c3e50;
+  margin: 0 0 4px 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.section-subtitle {
+  color: #7f8c8d;
+  font-size: 0.85rem;
+  margin: 0 0 12px 0;
+}
+
+.play-type-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.play-type-card {
+  text-align: center;
+  padding: 10px 8px;
+  background: white;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  transition: box-shadow 0.15s;
+}
+
+.play-type-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.play-type-card-name {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 0.82rem;
+  margin-bottom: 4px;
+}
+
+.play-type-card-pct {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #667eea;
+}
+
+.play-type-card-ppp {
+  font-size: 0.85rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.play-type-card-ppp.elite { color: #27ae60; }
+.play-type-card-ppp.average { color: #7f8c8d; }
+.play-type-card-ppp.poor { color: #e74c3c; }
+
+.play-type-card-poss {
+  font-size: 0.72rem;
+  color: #95a5a6;
+  margin-top: 3px;
+}
+
+.pctile-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  margin-top: 2px;
+}
+
+.pctile-badge.elite { background: #d5f5e3; color: #1e8449; }
+.pctile-badge.average { background: #eef1f5; color: #7f8c8d; }
+.pctile-badge.poor { background: #fde8e8; color: #c0392b; }

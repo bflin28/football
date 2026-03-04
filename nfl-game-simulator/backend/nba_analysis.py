@@ -687,6 +687,7 @@ PLAY_TYPE_LABELS = {
     'Isolation': 'Isolation',
     'PRBallHandler': 'Pick & Roll (Ball Handler)',
     'PRRollman': 'Pick & Roll (Roll Man)',
+    'PRRollMan': 'Pick & Roll (Roll Man)',
     'Postup': 'Post Up',
     'Spotup': 'Spot Up',
     'Handoff': 'Handoff',
@@ -697,13 +698,37 @@ PLAY_TYPE_LABELS = {
 }
 
 
+_synergy_cache = {}  # In-memory cache for synergy bulk fetches (keyed per session)
+
+
+def _fetch_all_synergy(scope, season, grouping, play_type):
+    """Fetch one play type for all players/teams. Uses cache to avoid re-fetching."""
+    cache_key = f'synergy_bulk|{scope}|{season}|{grouping}|{play_type}'
+    if cache_key in _synergy_cache:
+        return _synergy_cache[cache_key]
+
+    time.sleep(0.4)
+    data = synergyplaytypes.SynergyPlayTypes(
+        player_or_team_abbreviation=scope,  # 'P' or 'T'
+        season=season,
+        season_type_all_star='Regular Season',
+        type_grouping_nullable=grouping,
+        play_type_nullable=play_type,
+        timeout=30,
+    )
+    df = data.get_data_frames()[0]
+    _synergy_cache[cache_key] = df
+    return df
+
+
 def get_player_synergy_data(player_name, season='2024-25'):
     """
     Fetch Synergy play type data for a specific player.
     Returns offensive and defensive play type breakdowns.
+    Fetches each play type individually (API requires it) but caches
+    the league-wide response so subsequent players are instant.
     """
     player = find_player(player_name)
-    team_id = None
 
     # Get the player's team from their most recent game log
     time.sleep(0.4)
@@ -715,47 +740,30 @@ def get_player_synergy_data(player_name, season='2024-25'):
     if df.empty:
         raise ValueError(f"No game data for {player_name} in {season}")
 
-    # Extract team abbreviation from matchup (e.g. "DEN vs. LAL" → "DEN")
     matchup = df.iloc[0]['MATCHUP']
     team_abbr = matchup.split(' ')[0].strip()
 
-    # Look up team_id
-    all_teams = nba_teams.get_teams()
-    team_info = next((t for t in all_teams if t['abbreviation'] == team_abbr), None)
-    if not team_info:
-        raise ValueError(f"Could not find team for {team_abbr}")
-    team_id = team_info['id']
-
     results = {'player': player['full_name'], 'team': team_abbr, 'season': season}
 
-    # Fetch player-level offensive play types
-    time.sleep(0.4)
-    off_data = synergyplaytypes.SynergyPlayTypes(
-        player_or_team_abbreviation='P',
-        season=season,
-        season_type_all_star='Regular Season',
-        type_grouping_nullable='offensive',
-        timeout=30,
-    )
-    off_df = off_data.get_data_frames()[0]
+    play_types = list(PLAY_TYPE_LABELS.keys())
+    off_records = []
+    def_records = []
 
-    # Fetch player-level defensive play types
-    time.sleep(0.4)
-    def_data = synergyplaytypes.SynergyPlayTypes(
-        player_or_team_abbreviation='P',
-        season=season,
-        season_type_all_star='Regular Season',
-        type_grouping_nullable='defensive',
-        timeout=30,
-    )
-    def_df = def_data.get_data_frames()[0]
+    for pt in play_types:
+        for grouping, records in [('offensive', off_records), ('defensive', def_records)]:
+            try:
+                pt_df = _fetch_all_synergy('P', season, grouping, pt)
+                if not pt_df.empty:
+                    player_rows = pt_df[pt_df['PLAYER_ID'] == player['id']]
+                    if not player_rows.empty:
+                        records.extend(_format_play_type_df(player_rows))
+            except Exception:
+                pass
 
-    # Filter for this player's team (Synergy player data is keyed by team)
-    off_player = off_df[off_df['TEAM_ID'] == team_id] if not off_df.empty else off_df
-    def_player = def_df[def_df['TEAM_ID'] == team_id] if not def_df.empty else def_df
-
-    results['offensive'] = _format_play_type_df(off_player)
-    results['defensive'] = _format_play_type_df(def_player)
+    off_records.sort(key=lambda r: r['possessions'] or 0, reverse=True)
+    def_records.sort(key=lambda r: r['possessions'] or 0, reverse=True)
+    results['offensive'] = off_records
+    results['defensive'] = def_records
 
     return results
 
@@ -771,32 +779,25 @@ def get_team_synergy_data(team_abbr, season='2024-25'):
 
     results = {'team': team_abbr, 'team_name': team_info['full_name'], 'season': season}
 
-    # Offensive
-    time.sleep(0.4)
-    off_data = synergyplaytypes.SynergyPlayTypes(
-        player_or_team_abbreviation='T',
-        season=season,
-        season_type_all_star='Regular Season',
-        type_grouping_nullable='offensive',
-        timeout=30,
-    )
-    off_df = off_data.get_data_frames()[0]
-    team_off = off_df[off_df['TEAM_ABBREVIATION'] == team_abbr] if not off_df.empty else off_df
+    play_types = list(PLAY_TYPE_LABELS.keys())
+    off_records = []
+    def_records = []
 
-    # Defensive
-    time.sleep(0.4)
-    def_data = synergyplaytypes.SynergyPlayTypes(
-        player_or_team_abbreviation='T',
-        season=season,
-        season_type_all_star='Regular Season',
-        type_grouping_nullable='defensive',
-        timeout=30,
-    )
-    def_df = def_data.get_data_frames()[0]
-    team_def = def_df[def_df['TEAM_ABBREVIATION'] == team_abbr] if not def_df.empty else def_df
+    for pt in play_types:
+        for grouping, records in [('offensive', off_records), ('defensive', def_records)]:
+            try:
+                pt_df = _fetch_all_synergy('T', season, grouping, pt)
+                if not pt_df.empty:
+                    team_rows = pt_df[pt_df['TEAM_ABBREVIATION'] == team_abbr]
+                    if not team_rows.empty:
+                        records.extend(_format_play_type_df(team_rows))
+            except Exception:
+                pass
 
-    results['offensive'] = _format_play_type_df(team_off)
-    results['defensive'] = _format_play_type_df(team_def)
+    off_records.sort(key=lambda r: r['possessions'] or 0, reverse=True)
+    def_records.sort(key=lambda r: r['possessions'] or 0, reverse=True)
+    results['offensive'] = off_records
+    results['defensive'] = def_records
 
     return results
 

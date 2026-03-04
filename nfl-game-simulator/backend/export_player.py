@@ -23,6 +23,8 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 from nba_analysis import (
     run_das_analysis,
     fetch_game_shot_chart,
+    get_player_synergy_data,
+    get_team_synergy_data,
     DiskCache,
 )
 
@@ -50,7 +52,35 @@ def slugify(name):
     return slug.strip('-')
 
 
-def export_player(player_name, stat='PTS', season='2025-26', per_minute=False, skip_shot_charts=False):
+def fetch_player_synergy(player_name, season):
+    """Fetch player-level + team-level Synergy play type data."""
+    cache_key = f'synergy_export|{player_name}|{season}'
+    if cache_key in _nba_cache:
+        print(f'    Synergy: from cache')
+        return _nba_cache[cache_key]
+
+    player_data = get_player_synergy_data(player_name, season)
+    team_abbr = player_data.get('team', '')
+
+    team_data = {}
+    if team_abbr:
+        try:
+            team_data = get_team_synergy_data(team_abbr, season)
+        except Exception as e:
+            print(f'    Synergy team data failed: {e}')
+
+    result = {
+        'player_name': player_data.get('player', player_name),
+        'team': team_abbr,
+        'offensive': player_data.get('offensive', []),
+        'defensive': player_data.get('defensive', []),
+        'team_offensive': team_data.get('offensive', []),
+    }
+    _nba_cache[cache_key] = result
+    return result
+
+
+def export_player(player_name, stat='PTS', season='2025-26', per_minute=False, skip_shot_charts=False, skip_synergy=False):
     """Export a single player's DAS + optionally shot charts to JSON."""
     slug = slugify(player_name)
     out_path = os.path.join(DATA_DIR, f'{slug}.json')
@@ -111,6 +141,19 @@ def export_player(player_name, stat='PTS', season='2025-26', per_minute=False, s
 
         print(f'    Shot charts: {cached_sc} cached, {fetched_sc} fetched, {failed_sc} failed')
 
+    # ── Step 2.5: Fetch Synergy play type data ──
+    synergy_data = {}
+    if skip_synergy:
+        print(f'    Synergy: skipped')
+    else:
+        try:
+            synergy_data = fetch_player_synergy(player_name, season)
+            off_count = len(synergy_data.get('offensive', []))
+            def_count = len(synergy_data.get('defensive', []))
+            print(f'    Synergy: {off_count} offensive, {def_count} defensive play types')
+        except Exception as e:
+            print(f'    Synergy: FAILED — {e}')
+
     # ── Step 3: Build export JSON ──
     export_data = {
         'player': player_info,
@@ -119,6 +162,7 @@ def export_player(player_name, stat='PTS', season='2025-26', per_minute=False, s
         'per_minute': per_minute,
         'das': das_data,
         'shot_charts': shot_charts,
+        'synergy': synergy_data,
     }
 
     # Ensure output directory exists
@@ -184,15 +228,16 @@ def update_manifest(player_entries):
     print(f'\n  Manifest updated: {len(manifest["players"])} players')
 
 
-def export_all_cached(stat='PTS', season='2025-26', skip_shot_charts=False):
+def export_all_cached(stat='PTS', season='2025-26', skip_shot_charts=False, skip_synergy=False):
     """Re-export all players that have cached DAS results."""
     entries = []
-    for key in _nba_cache._data:
+    for key in list(_nba_cache._data.keys()):
         if key.startswith(f'das|') and f'|{stat}|{season}|' in key:
             parts = key.split('|')
             player_name = parts[1]
             try:
-                entry = export_player(player_name, stat=stat, season=season, skip_shot_charts=skip_shot_charts)
+                entry = export_player(player_name, stat=stat, season=season,
+                                      skip_shot_charts=skip_shot_charts, skip_synergy=skip_synergy)
                 entries.append(entry)
             except Exception as e:
                 print(f'    FAILED: {player_name} — {e}')
@@ -207,6 +252,7 @@ if __name__ == '__main__':
     parser.add_argument('--all', action='store_true', help='Re-export all cached DAS results')
     parser.add_argument('--per-minute', action='store_true', help='Use per-minute normalization')
     parser.add_argument('--skip-shot-charts', action='store_true', help='Skip shot chart fetching (faster)')
+    parser.add_argument('--skip-synergy', action='store_true', help='Skip Synergy play type data')
     args = parser.parse_args()
 
     print(f'\n{"=" * 60}')
@@ -218,11 +264,13 @@ if __name__ == '__main__':
 
     if args.all:
         print(f'\n  Re-exporting all cached players...')
-        entries = export_all_cached(stat=args.stat, season=args.season, skip_shot_charts=args.skip_shot_charts)
+        entries = export_all_cached(stat=args.stat, season=args.season,
+                                     skip_shot_charts=args.skip_shot_charts, skip_synergy=args.skip_synergy)
     elif args.players:
         for name in args.players:
             try:
-                entry = export_player(name, stat=args.stat, season=args.season, per_minute=args.per_minute, skip_shot_charts=args.skip_shot_charts)
+                entry = export_player(name, stat=args.stat, season=args.season, per_minute=args.per_minute,
+                                      skip_shot_charts=args.skip_shot_charts, skip_synergy=args.skip_synergy)
                 entries.append(entry)
             except Exception as e:
                 print(f'\n  FAILED: {name} — {e}')
