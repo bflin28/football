@@ -313,6 +313,198 @@ def compute_play_impact_scores(actions, key_moments, is_home):
         }
 
 
+def classify_play_type(action):
+    """Classify an action into a play type category based on shot mechanics.
+
+    Categories:
+      stepback     — Step-back shots
+      pullup       — Pull-up jumpers and unassisted generic jump shots
+      drive        — Driving layups, floaters, dunks
+      catch_shoot  — Assisted perimeter shots (spot-up, off-screen, etc.)
+      post         — Turnarounds, fadeaways, hook shots
+      transition   — Running/fast-break plays
+      ft           — Free throws
+      other        — Rebounds, turnovers, fouls, putbacks, etc.
+    """
+    at = action.get('action_type', '')
+    st = (action.get('sub_type') or '').lower()
+    desc = action.get('description') or ''
+    assisted = 'AST)' in desc
+
+    # Free throws
+    if at == 'Free Throw':
+        return 'ft'
+
+    # Non-shot actions
+    if at not in ('Made Shot', 'Missed Shot'):
+        return 'other'
+
+    # Shot classification (priority order)
+    if 'step back' in st:
+        return 'stepback'
+    if st.startswith('driving') or 'driving' in st:
+        return 'drive'
+    if 'turnaround' in st or 'hook' in st or 'fadeaway' in st:
+        return 'post'
+    if 'running' in st and 'pull-up' not in st and 'pull up' not in st:
+        return 'transition'
+    if 'pullup' in st or 'pull-up' in st or 'pull up' in st:
+        return 'pullup'
+    if 'putback' in st or 'tip' in st:
+        return 'other'
+
+    # Assisted shot → catch & shoot
+    if assisted:
+        return 'catch_shoot'
+
+    # Unassisted generic jump shot → pull-up
+    return 'pullup'
+
+
+def classify_play_types(actions):
+    """Add play_type field to each action."""
+    for action in actions:
+        action['play_type'] = classify_play_type(action)
+
+
+def export_game_narrative(game_id, player_id, player_slug, player_name, game_meta):
+    """Export PBP narrative for a single game."""
+    is_home = game_meta.get('is_home', False)
+
+    PIS = Base Value + Leverage + Difficulty + Moment Bonus
+
+    Base: points scored (3PT=3, 2PT=2, FT=1, miss=0.3, steal/block=1.5, TO=-0.5)
+    Leverage: closeness × time_factor (tight game late = max, blowout early = near zero)
+    Difficulty: made shots only — distance bonus + shot type complexity bonus
+    Moment: additive bonuses for clutch, go-ahead, and-1, scoring burst
+    """
+    # Build moment lookup: action idx → list of moment types
+    moment_map = {}
+    for km in key_moments:
+        idx = km['action_index']
+        if idx not in moment_map:
+            moment_map[idx] = []
+        moment_map[idx].append(km['type'])
+
+    for action in actions:
+        # ── Base Value ──
+        atype = action['action_type']
+        desc = (action.get('description') or '').upper()
+
+        if atype == 'Made Shot':
+            base = action.get('shot_value') or 2
+        elif atype == 'Free Throw' and action.get('made'):
+            base = 1.0
+        elif atype == 'Free Throw' and not action.get('made'):
+            base = 0.2
+        elif atype == 'Missed Shot':
+            base = 0.3
+        elif 'STEAL' in desc:
+            base = 1.5
+        elif 'BLOCK' in desc:
+            base = 1.5
+        elif atype == 'Rebound':
+            # Offensive rebound if Off count > 0 and follows a miss
+            off_match = re.search(r'Off:(\d+)', action.get('description', ''))
+            off_count = int(off_match.group(1)) if off_match else 0
+            base = 1.0 if off_count > 0 else 0.3
+        elif atype == 'Turnover':
+            base = -0.5
+        else:
+            base = 0.0
+
+        # ── Leverage (closeness × time_factor) ──
+        if is_home:
+            player_score = action['score_home']
+            opp_score = action['score_away']
+        else:
+            player_score = action['score_away']
+            opp_score = action['score_home']
+        margin = abs(player_score - opp_score)
+
+        if margin <= 3:
+            closeness = 1.0
+        elif margin <= 6:
+            closeness = 0.7
+        elif margin <= 10:
+            closeness = 0.4
+        elif margin <= 15:
+            closeness = 0.15
+        else:
+            closeness = 0.05
+
+        period = action['period']
+        clock_s = action['clock_seconds']
+
+        if period > 4:  # OT — every second is high leverage
+            time_factor = 5.0 if clock_s <= 60 else (4.0 if clock_s <= 180 else 3.5)
+        else:
+            secs_left = clock_s + (4 - period) * 720
+            if secs_left <= 120:
+                time_factor = 5.0
+            elif secs_left <= 300:
+                time_factor = 3.5
+            elif secs_left <= 720:
+                time_factor = 2.5
+            elif secs_left <= 1440:
+                time_factor = 1.5
+            else:
+                time_factor = 1.0
+
+        leverage = closeness * time_factor
+
+        # ── Difficulty (made shots only) ──
+        difficulty = 0.0
+        if atype == 'Made Shot' and action.get('made'):
+            dist = action.get('shot_distance') or 0
+            if dist >= 25:
+                difficulty += 1.0
+            elif dist >= 20:
+                difficulty += 0.7
+            elif dist >= 15:
+                difficulty += 0.5
+            elif dist >= 10:
+                difficulty += 0.3
+            else:
+                difficulty += 0.1
+
+            sub = (action.get('sub_type') or '').lower()
+            if any(w in sub for w in ('step back', 'fadeaway', 'turnaround')):
+                difficulty += 1.0
+            elif any(w in sub for w in ('pullup', 'driving', 'floating', 'running')):
+                difficulty += 0.5
+            elif 'dunk' in sub:
+                difficulty += 0.3
+
+        # ── Moment Bonus ──
+        moment = 0.0
+        for mt in moment_map.get(action['idx'], []):
+            if mt == 'clutch':
+                moment += 1.5
+            elif mt == 'go_ahead':
+                moment += 2.0
+            elif mt == 'and_one':
+                moment += 1.0
+            elif mt == 'scoring_burst':
+                moment += 0.5
+            # three_pointer: no extra bonus (captured in base value)
+
+        pis = round(max(base + leverage + difficulty + moment, 0), 1)
+        action['pis'] = pis
+        action['pis_components'] = {
+            'base': round(base, 1),
+            'leverage': round(leverage, 1),
+            'difficulty': round(difficulty, 1),
+            'moment': round(moment, 1),
+        }
+
+
+    # Compute Play Impact Scores
+    compute_play_impact_scores(actions, key_moments, is_home)
+
+    # Classify play types
+    classify_play_types(actions)
+
     # Compute scoring timeline by period
     by_period = {}
     for a in actions:
