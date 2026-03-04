@@ -371,103 +371,133 @@ def export_game_narrative(game_id, player_id, player_slug, player_name, game_met
     """Export PBP narrative for a single game."""
     is_home = game_meta.get('is_home', False)
 
-    # Fetch PBP
-    time.sleep(0.4)
-    pbp = playbyplayv3.PlayByPlayV3(game_id=game_id, timeout=30)
-    df = pbp.get_data_frames()[0]
+    PIS = Base Value + Leverage + Difficulty + Moment Bonus
 
-    if df.empty:
-        print(f'    PBP: empty')
-        return None
+    Base: points scored (3PT=3, 2PT=2, FT=1, miss=0.3, steal/block=1.5, TO=-0.5)
+    Leverage: closeness × time_factor (tight game late = max, blowout early = near zero)
+    Difficulty: made shots only — distance bonus + shot type complexity bonus
+    Moment: additive bonuses for clutch, go-ahead, and-1, scoring burst
+    """
+    # Build moment lookup: action idx → list of moment types
+    moment_map = {}
+    for km in key_moments:
+        idx = km['action_index']
+        if idx not in moment_map:
+            moment_map[idx] = []
+        moment_map[idx].append(km['type'])
 
-    # Get final score from last row with score data
-    scored_rows = df.dropna(subset=['scoreHome', 'scoreAway'])
-    final_home = int(scored_rows.iloc[-1]['scoreHome']) if not scored_rows.empty else 0
-    final_away = int(scored_rows.iloc[-1]['scoreAway']) if not scored_rows.empty else 0
-    max_period = int(df['period'].max())
+    for action in actions:
+        # ── Base Value ──
+        atype = action['action_type']
+        desc = (action.get('description') or '').upper()
 
-    # Filter to this player's actions
-    player_df = df[df['personId'] == player_id].copy()
+        if atype == 'Made Shot':
+            base = action.get('shot_value') or 2
+        elif atype == 'Free Throw' and action.get('made'):
+            base = 1.0
+        elif atype == 'Free Throw' and not action.get('made'):
+            base = 0.2
+        elif atype == 'Missed Shot':
+            base = 0.3
+        elif 'STEAL' in desc:
+            base = 1.5
+        elif 'BLOCK' in desc:
+            base = 1.5
+        elif atype == 'Rebound':
+            # Offensive rebound if Off count > 0 and follows a miss
+            off_match = re.search(r'Off:(\d+)', action.get('description', ''))
+            off_count = int(off_match.group(1)) if off_match else 0
+            base = 1.0 if off_count > 0 else 0.3
+        elif atype == 'Turnover':
+            base = -0.5
+        else:
+            base = 0.0
 
-    # Build actions list
-    actions = []
-    last_score_home = 0
-    last_score_away = 0
-    running_pts = 0
+        # ── Leverage (closeness × time_factor) ──
+        if is_home:
+            player_score = action['score_home']
+            opp_score = action['score_away']
+        else:
+            player_score = action['score_away']
+            opp_score = action['score_home']
+        margin = abs(player_score - opp_score)
 
-    # Forward-fill scores across all rows for margin tracking
-    import pandas as pd
-    df['scoreHome'] = pd.to_numeric(df['scoreHome'], errors='coerce').ffill().fillna(0).astype(int)
-    df['scoreAway'] = pd.to_numeric(df['scoreAway'], errors='coerce').ffill().fillna(0).astype(int)
+        if margin <= 3:
+            closeness = 1.0
+        elif margin <= 6:
+            closeness = 0.7
+        elif margin <= 10:
+            closeness = 0.4
+        elif margin <= 15:
+            closeness = 0.15
+        else:
+            closeness = 0.05
 
-    for i, (_, row) in enumerate(player_df.iterrows()):
-        action_type = str(row.get('actionType', '') or '')
-        sub_type = str(row.get('subType', '') or '')
-        description = str(row.get('description', '') or '')
-        clock_display, clock_seconds = parse_clock(str(row.get('clock', '')))
+        period = action['period']
+        clock_s = action['clock_seconds']
 
-        # Determine points scored on this action
-        points = 0
-        made = False
-        shot_value = 0
+        if period > 4:  # OT — every second is high leverage
+            time_factor = 5.0 if clock_s <= 60 else (4.0 if clock_s <= 180 else 3.5)
+        else:
+            secs_left = clock_s + (4 - period) * 720
+            if secs_left <= 120:
+                time_factor = 5.0
+            elif secs_left <= 300:
+                time_factor = 3.5
+            elif secs_left <= 720:
+                time_factor = 2.5
+            elif secs_left <= 1440:
+                time_factor = 1.5
+            else:
+                time_factor = 1.0
 
-        if action_type == 'Made Shot':
-            shot_value = _safe_int(row.get('shotValue')) or 2
-            points = shot_value
-            made = True
-        elif action_type == 'Free Throw' and 'MISS' not in description:
-            points = 1
-            made = True
-            shot_value = 1
+        leverage = closeness * time_factor
 
-        running_pts += points
+        # ── Difficulty (made shots only) ──
+        difficulty = 0.0
+        if atype == 'Made Shot' and action.get('made'):
+            dist = action.get('shot_distance') or 0
+            if dist >= 25:
+                difficulty += 1.0
+            elif dist >= 20:
+                difficulty += 0.7
+            elif dist >= 15:
+                difficulty += 0.5
+            elif dist >= 10:
+                difficulty += 0.3
+            else:
+                difficulty += 0.1
 
-        # Score at this moment
-        idx_in_full = row.name  # original DataFrame index
-        score_home = int(df.loc[idx_in_full, 'scoreHome'])
-        score_away = int(df.loc[idx_in_full, 'scoreAway'])
+            sub = (action.get('sub_type') or '').lower()
+            if any(w in sub for w in ('step back', 'fadeaway', 'turnaround')):
+                difficulty += 1.0
+            elif any(w in sub for w in ('pullup', 'driving', 'floating', 'running')):
+                difficulty += 0.5
+            elif 'dunk' in sub:
+                difficulty += 0.3
 
-        # Detect go-ahead
-        player_score_before = (last_score_home if is_home else last_score_away)
-        opp_score_before = (last_score_away if is_home else last_score_home)
-        player_score_after = (score_home if is_home else score_away)
-        opp_score_after = (score_away if is_home else score_home)
-        went_ahead = (points > 0 and
-                      player_score_before <= opp_score_before and
-                      player_score_after > opp_score_after)
+        # ── Moment Bonus ──
+        moment = 0.0
+        for mt in moment_map.get(action['idx'], []):
+            if mt == 'clutch':
+                moment += 1.5
+            elif mt == 'go_ahead':
+                moment += 2.0
+            elif mt == 'and_one':
+                moment += 1.0
+            elif mt == 'scoring_burst':
+                moment += 0.5
+            # three_pointer: no extra bonus (captured in base value)
 
-        if score_home > 0 or score_away > 0:
-            last_score_home = score_home
-            last_score_away = score_away
-
-        action = {
-            'idx': i,
-            'period': int(row.get('period', 0)),
-            'clock': clock_display,
-            'clock_seconds': clock_seconds,
-            'action_type': action_type,
-            'sub_type': sub_type,
-            'description': description,
-            'made': made,
-            'shot_value': shot_value if shot_value > 0 else None,
-            'shot_distance': _safe_int(row.get('shotDistance')),
-            'x': _safe_int(row.get('xLegacy')),
-            'y': _safe_int(row.get('yLegacy')),
-            'points': points,
-            'running_pts': running_pts,
-            'score_home': score_home,
-            'score_away': score_away,
-            'went_ahead': went_ahead,
+        pis = round(max(base + leverage + difficulty + moment, 0), 1)
+        action['pis'] = pis
+        action['pis_components'] = {
+            'base': round(base, 1),
+            'leverage': round(leverage, 1),
+            'difficulty': round(difficulty, 1),
+            'moment': round(moment, 1),
         }
 
-        # Skip substitutions and period starts to keep it focused
-        if action_type in ('Substitution', 'Period', 'Game'):
-            continue
-
-        actions.append(action)
-
-    # Detect key moments
-    key_moments = detect_key_moments(actions, is_home)
 
     # Compute Play Impact Scores
     compute_play_impact_scores(actions, key_moments, is_home)

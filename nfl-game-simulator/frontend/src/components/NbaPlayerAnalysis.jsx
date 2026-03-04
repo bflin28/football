@@ -1191,6 +1191,12 @@ const NbaPlayerAnalysis = () => {
       if (gameStoryFilter === 'impact' && (a.pis || 0) < 5) return false;
       // Scheme filter
       if (gameStoryScheme !== 'all' && (a.play_type || 'other') !== gameStoryScheme) return false;
+    // Filter actions
+    const filteredActionsUnsorted = actions.filter(a => {
+      if (gameStoryFilter === 'all') return true;
+      if (gameStoryFilter === 'scoring') return a.points > 0;
+      if (gameStoryFilter === 'key') return !!momentMap[a.idx];
+      if (gameStoryFilter === 'impact') return (a.pis || 0) >= 5;
       return true;
     });
 
