@@ -575,6 +575,8 @@
   padding: 6px;
   text-align: center;
   border-bottom: 1px solid #f0f0f0;
+  color: #1a1a2e;
+  font-weight: 500;
 }
 
 .game-log-table tbody tr:hover {
