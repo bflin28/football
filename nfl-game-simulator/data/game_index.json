@@ -1,0 +1,110 @@
+{
+  "games": [
+    {
+      "game_id": "0022500005",
+      "player_slug": "shai-gilgeous-alexander",
+      "player_name": "Shai Gilgeous-Alexander",
+      "file": "0022500005_shai-gilgeous-alexander.json",
+      "das": 2.096
+    },
+    {
+      "game_id": "0022500317",
+      "player_slug": "luka-doncic",
+      "player_name": "Luka Dončić",
+      "file": "0022500317_luka-doncic.json",
+      "das": 1.67
+    },
+    {
+      "game_id": "0022500862",
+      "player_slug": "shai-gilgeous-alexander",
+      "player_name": "Shai Gilgeous-Alexander",
+      "file": "0022500862_shai-gilgeous-alexander.json",
+      "das": 1.44
+    },
+    {
+      "game_id": "0022500723",
+      "player_slug": "shai-gilgeous-alexander",
+      "player_name": "Shai Gilgeous-Alexander",
+      "file": "0022500723_shai-gilgeous-alexander.json",
+      "das": 1.433
+    },
+    {
+      "game_id": "0022500266",
+      "player_slug": "tyrese-maxey",
+      "player_name": "Tyrese Maxey",
+      "file": "0022500266_tyrese-maxey.json",
+      "das": 1.416
+    },
+    {
+      "game_id": "0022500001",
+      "player_slug": "shai-gilgeous-alexander",
+      "player_name": "Shai Gilgeous-Alexander",
+      "file": "0022500001_shai-gilgeous-alexander.json",
+      "das": 1.386
+    },
+    {
+      "game_id": "0022500841",
+      "player_slug": "anthony-edwards",
+      "player_name": "Anthony Edwards",
+      "file": "0022500841_anthony-edwards.json",
+      "das": 1.307
+    },
+    {
+      "game_id": "0022500721",
+      "player_slug": "jaylen-brown",
+      "player_name": "Jaylen Brown",
+      "file": "0022500721_jaylen-brown.json",
+      "das": 1.202
+    },
+    {
+      "game_id": "0022500275",
+      "player_slug": "tyrese-maxey",
+      "player_name": "Tyrese Maxey",
+      "file": "0022500275_tyrese-maxey.json",
+      "das": 1.152
+    },
+    {
+      "game_id": "0022500024",
+      "player_slug": "luka-doncic",
+      "player_name": "Luka Dončić",
+      "file": "0022500024_luka-doncic.json",
+      "das": 1.132
+    },
+    {
+      "game_id": "0022500847",
+      "player_slug": "nikola-jokic",
+      "player_name": "Nikola Jokić",
+      "file": "0022500847_nikola-jokic.json",
+      "das": 1.11
+    },
+    {
+      "game_id": "0022500823",
+      "player_slug": "jaylen-brown",
+      "player_name": "Jaylen Brown",
+      "file": "0022500823_jaylen-brown.json",
+      "das": 1.104
+    },
+    {
+      "game_id": "0022500019",
+      "player_slug": "luka-doncic",
+      "player_name": "Luka Dončić",
+      "file": "0022500019_luka-doncic.json",
+      "das": 1.037
+    },
+    {
+      "game_id": "0022500243",
+      "player_slug": "tyrese-maxey",
+      "player_name": "Tyrese Maxey",
+      "file": "0022500243_tyrese-maxey.json",
+      "das": 1.001
+    },
+    {
+      "game_id": "0022500060",
+      "player_slug": "jaylen-brown",
+      "player_name": "Jaylen Brown",
+      "file": "0022500060_jaylen-brown.json",
+      "das": 0.998
+    }
+  ],
+  "exported_at": "2026-03-04T19:10:14.336457+00:00"
+}

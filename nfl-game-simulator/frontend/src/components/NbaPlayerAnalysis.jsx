@@ -222,6 +222,13 @@ const NbaPlayerAnalysis = () => {
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardProgress, setLeaderboardProgress] = useState({ current: 0, total: 0, playerName: '' });
 
+  // ── Game Story ──
+  const [gameStoryData, setGameStoryData] = useState(null);
+  const [gameStoryLoading, setGameStoryLoading] = useState(false);
+  const [gameStoryExpanded, setGameStoryExpanded] = useState(null);
+  const [gameStoryIndex, setGameStoryIndex] = useState(null);
+  const [gameStoryFilter, setGameStoryFilter] = useState('all');
+
   const statLabel = perMinute ? `${stat}/min` : stat;
 
   const autoAnalyzed = useRef(false);
@@ -230,6 +237,10 @@ const NbaPlayerAnalysis = () => {
     fetch('/data/manifest.json')
       .then(r => safeJson(r))
       .then(data => { if (data) setAvailablePlayers(data.players || []); })
+      .catch(() => {});
+    fetch('/data/game_index.json')
+      .then(r => safeJson(r))
+      .then(data => { if (data) setGameStoryIndex(data); })
       .catch(() => {});
   }, []);
 
@@ -1106,6 +1117,265 @@ const NbaPlayerAnalysis = () => {
     );
   };
 
+  // ── Game Story: click handler for leaderboard rows ──
+  const handleLeaderboardGameClick = async (game) => {
+    const key = `${game.game_id}_${slugify(game.player_name)}`;
+
+    // Toggle off if already expanded
+    if (gameStoryExpanded === key) {
+      setGameStoryExpanded(null);
+      setGameStoryData(null);
+      return;
+    }
+
+    // Check if narrative exists in index
+    const entry = gameStoryIndex?.games?.find(
+      gi => gi.game_id === game.game_id && gi.player_slug === slugify(game.player_name)
+    );
+    if (!entry) return;
+
+    setGameStoryExpanded(key);
+    setGameStoryLoading(true);
+    setGameStoryFilter('all');
+
+    try {
+      const res = await fetch(`/data/games/${entry.file}`);
+      const data = await safeJson(res);
+      if (data) setGameStoryData(data);
+    } catch (err) {
+      console.error('Failed to load game story:', err);
+    } finally {
+      setGameStoryLoading(false);
+    }
+  };
+
+  // ── Render: Game Story Panel ──
+  const renderGameStory = () => {
+    if (!gameStoryData) return null;
+    const { game_info: info, actions, key_moments, scoring_timeline, player } = gameStoryData;
+
+    // Build key moment lookup: action idx → types[]
+    const momentMap = {};
+    (key_moments || []).forEach(km => {
+      if (!momentMap[km.action_index]) momentMap[km.action_index] = [];
+      momentMap[km.action_index].push(km);
+    });
+
+    // Filter actions
+    const filteredActions = actions.filter(a => {
+      if (gameStoryFilter === 'all') return true;
+      if (gameStoryFilter === 'scoring') return a.points > 0;
+      if (gameStoryFilter === 'key') return !!momentMap[a.idx];
+      return true;
+    });
+
+    const periodLabel = (p) => p <= 4 ? `Q${p}` : `OT${p - 4}`;
+
+    const BADGE_STYLES = {
+      clutch: { label: 'Clutch', className: 'badge-clutch' },
+      go_ahead: { label: 'Go-ahead', className: 'badge-goahead' },
+      three_pointer: { label: '3PT', className: 'badge-three' },
+      and_one: { label: 'And-1', className: 'badge-andone' },
+      scoring_burst: { label: 'Burst', className: 'badge-burst' },
+    };
+
+    const lastName = player.name.split(' ').pop();
+    const resultStr = info.is_home ? `vs ${info.opponent}` : `@ ${info.opponent}`;
+    const periodStr = info.periods > 4 ? `${info.periods - 4}OT` : '';
+    const scoreStr = info.is_home
+      ? `${info.final_score.home}-${info.final_score.away}`
+      : `${info.final_score.away}-${info.final_score.home}`;
+
+    const maxPeriodPts = Math.max(...(scoring_timeline?.by_period || []).map(p => p.points), 1);
+
+    // Shots for shot chart
+    const shots = actions.filter(a =>
+      (a.action_type === 'Made Shot' || a.action_type === 'Missed Shot') &&
+      (a.x !== 0 || a.y !== 0)
+    );
+
+    // Group key moments by type for summary
+    const momentsByType = {};
+    (key_moments || []).forEach(km => {
+      if (!momentsByType[km.type]) momentsByType[km.type] = [];
+      const action = actions.find(a => a.idx === km.action_index);
+      if (action) momentsByType[km.type].push({ ...km, action });
+    });
+
+    return (
+      <div className="game-story-panel">
+        {/* Header */}
+        <div className="game-story-header">
+          <div className="game-story-title">
+            <h3>{player.name} {resultStr}</h3>
+            <div className="game-story-meta">
+              <span className="gs-pts">{info.pts} PTS</span>
+              <span className="gs-line">{info.reb} REB · {info.ast} AST</span>
+              <span className="gs-extra">{periodStr}{periodStr && ' · '}{info.result} {scoreStr}</span>
+              <span className="gs-das">DAS: {info.das?.toFixed(2)}</span>
+            </div>
+          </div>
+          <div className="game-story-date">{info.date}</div>
+        </div>
+
+        {/* DAS Context */}
+        <div className="game-story-das-context">
+          <h4>Why This Game Stands Out</h4>
+          <p>
+            {lastName}'s usage {info.das_components?.usage_spike > 1.5 ? 'spiked massively' : info.das_components?.usage_spike > 0.5 ? 'increased notably' : 'was near normal'}
+            {' '}(z={info.das_components?.usage_spike?.toFixed(2)}).
+            {info.das_components?.teammate_suppression > 1.0
+              ? ` Teammates were heavily suppressed (z=${info.das_components.teammate_suppression.toFixed(2)}) — the defense funneled everything through ${lastName}.`
+              : info.das_components?.teammate_suppression > 0.3
+              ? ` Teammates saw reduced usage (z=${info.das_components.teammate_suppression.toFixed(2)}).`
+              : ''}
+            {info.das_components?.touch_increase > 1.0
+              ? ` Ball handling spiked (z=${info.das_components.touch_increase.toFixed(2)}).`
+              : ''}
+            {info.das_components?.shot_openness > 1.0
+              ? ` Despite the attention, shot openness was high (z=${info.das_components.shot_openness.toFixed(2)}) — the defense couldn't contain the looks.`
+              : info.das_components?.shot_openness < -0.5
+              ? ` The defense tightened shot openness (z=${info.das_components.shot_openness.toFixed(2)}).`
+              : ''}
+          </p>
+        </div>
+
+        {/* Scoring Timeline */}
+        {scoring_timeline?.by_period && (
+          <div className="game-story-timeline">
+            <h4>Scoring by Period</h4>
+            <div className="timeline-bars">
+              {scoring_timeline.by_period.map((p, i) => (
+                <div key={i} className="timeline-bar-col">
+                  <div className="timeline-bar-value">{p.points}</div>
+                  <div className="timeline-bar-track">
+                    <div
+                      className={`timeline-bar-fill ${p.period > 4 ? 'overtime' : ''}`}
+                      style={{ height: `${(p.points / maxPeriodPts) * 100}%` }}
+                    />
+                  </div>
+                  <div className="timeline-bar-label">{p.label}</div>
+                  <div className="timeline-bar-detail">{p.fgm}/{p.fga} FG · {p.ftm}/{p.fta} FT</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Play-by-Play */}
+        <div className="game-story-pbp-section">
+          <div className="pbp-header">
+            <h4>Play-by-Play</h4>
+            <div className="pbp-filters">
+              {['all', 'scoring', 'key'].map(f => (
+                <button
+                  key={f}
+                  className={`pbp-filter-btn ${gameStoryFilter === f ? 'active' : ''}`}
+                  onClick={() => setGameStoryFilter(f)}
+                >
+                  {f === 'all' ? `All (${actions.length})` : f === 'scoring' ? `Scoring (${actions.filter(a => a.points > 0).length})` : `Key Moments (${Object.keys(momentMap).length})`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="pbp-table-wrap">
+            <table className="pbp-table">
+              <thead>
+                <tr>
+                  <th className="pbp-time-col">Time</th>
+                  <th>Action</th>
+                  <th>Score</th>
+                  <th>PTS</th>
+                  <th>Tags</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredActions.map((a, i) => {
+                  const badges = momentMap[a.idx] || [];
+                  return (
+                    <tr key={`${a.idx}-${i}`} className={`pbp-row ${badges.length > 0 ? 'pbp-highlighted' : ''} ${a.points > 0 ? 'pbp-scoring' : ''}`}>
+                      <td className="pbp-time">
+                        <span className="pbp-period">{periodLabel(a.period)}</span>
+                        <span className="pbp-clock">{a.clock}</span>
+                      </td>
+                      <td className="pbp-desc">{a.description || '—'}</td>
+                      <td className="pbp-score">{a.score_away}-{a.score_home}</td>
+                      <td className="pbp-running-pts">{a.running_pts}</td>
+                      <td className="pbp-badges">
+                        {badges.map((b, bi) => (
+                          <span key={bi} className={`pbp-badge ${BADGE_STYLES[b.type]?.className || ''}`}>
+                            {BADGE_STYLES[b.type]?.label || b.label}
+                          </span>
+                        ))}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Shot Chart */}
+        {shots.length > 0 && (
+          <div className="game-story-shot-chart">
+            <h4>Shot Chart</h4>
+            <svg viewBox="-250 -52 500 470" className="gs-court-svg">
+              <rect x="-250" y="-52" width="500" height="470" fill="#fafafa" stroke="#ddd" />
+              <circle cx="0" cy="0" r="7.5" fill="none" stroke="#aaa" strokeWidth="1.5" />
+              <line x1="-30" y1="-7" x2="30" y2="-7" stroke="#aaa" strokeWidth="2" />
+              <rect x="-80" y="-52" width="160" height="190" fill="none" stroke="#ccc" strokeWidth="1" />
+              <circle cx="0" cy="138" r="60" fill="none" stroke="#ccc" strokeWidth="1" />
+              <path d="M -220 -52 L -220 88 A 238 238 0 0 0 220 88 L 220 -52" fill="none" stroke="#ccc" strokeWidth="1" />
+              {shots.map((s, i) => (
+                <circle
+                  key={i}
+                  cx={s.x}
+                  cy={s.y}
+                  r={6}
+                  fill={s.made ? 'rgba(39,174,96,0.7)' : 'rgba(231,76,60,0.5)'}
+                  stroke={s.made ? '#27ae60' : '#e74c3c'}
+                  strokeWidth={1.5}
+                >
+                  <title>{periodLabel(s.period)} {s.clock} — {s.description}</title>
+                </circle>
+              ))}
+            </svg>
+            <div className="gs-shot-legend">
+              <span><span className="gs-dot made" /> Made</span>
+              <span><span className="gs-dot missed" /> Missed</span>
+            </div>
+          </div>
+        )}
+
+        {/* Key Moments Summary */}
+        {Object.keys(momentsByType).length > 0 && (
+          <div className="game-story-key-moments">
+            <h4>Key Moments to Watch</h4>
+            <div className="key-moments-grid">
+              {Object.entries(momentsByType).map(([type, moments]) => (
+                <div key={type} className="key-moment-group">
+                  <div className={`key-moment-type ${BADGE_STYLES[type]?.className || ''}`}>
+                    {BADGE_STYLES[type]?.label || type} ({moments.length})
+                  </div>
+                  <ul className="key-moment-list">
+                    {moments.map((m, mi) => (
+                      <li key={mi}>
+                        <span className="km-time">{periodLabel(m.action.period)} {m.action.clock}</span>
+                        <span className="km-desc">{m.action.description}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ── Render: Player Deep Dive charts ──
   const renderPlayerCharts = () => {
     const das = dasData.das;
@@ -1624,24 +1894,52 @@ const NbaPlayerAnalysis = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {leaderboardData.allGames.slice(0, 100).map((g, i) => (
-                      <tr key={`${g.game_id}-${g.player_name}-${i}`}
-                        className={g.das > 1.5 ? 'das-high' : g.das < -1.0 ? 'das-low' : ''}
-                      >
-                        <td>{i + 1}</td>
-                        <td><strong>{g.player_name}</strong> <span className="team-tag">{g.player_team}</span></td>
-                        <td>{(g.date || '').slice(5)}</td>
-                        <td>{g.opponent || '—'}</td>
-                        <td className="stat-val">{g.stat_value != null ? (perMinute ? g.stat_value.toFixed(2) : g.stat_value) : '—'}</td>
-                        <td className={`das-val ${g.das > 1 ? 'das-pos' : g.das < -1 ? 'das-neg' : ''}`}>
-                          {g.das?.toFixed(2)}
-                        </td>
-                        <td>{g.components?.usage_spike?.toFixed(2) ?? '—'}</td>
-                        <td>{g.components?.shot_openness?.toFixed(2) ?? '—'}</td>
-                        <td>{g.components?.teammate_suppression?.toFixed(2) ?? '—'}</td>
-                        <td>{g.components?.touch_increase?.toFixed(2) ?? '—'}</td>
-                      </tr>
-                    ))}
+                    {leaderboardData.allGames.slice(0, 100).map((g, i) => {
+                      const storyKey = `${g.game_id}_${slugify(g.player_name)}`;
+                      const hasStory = gameStoryIndex?.games?.some(
+                        gi => gi.game_id === g.game_id && gi.player_slug === slugify(g.player_name)
+                      );
+                      const isExpanded = gameStoryExpanded === storyKey;
+
+                      return (
+                        <React.Fragment key={`${g.game_id}-${g.player_name}-${i}`}>
+                          <tr
+                            className={`${g.das > 1.5 ? 'das-high' : g.das < -1.0 ? 'das-low' : ''} ${hasStory ? 'has-story' : ''} ${isExpanded ? 'expanded-row' : ''}`}
+                            onClick={() => hasStory && handleLeaderboardGameClick(g)}
+                            style={{ cursor: hasStory ? 'pointer' : 'default' }}
+                          >
+                            <td className="expand-toggle">
+                              {hasStory ? (isExpanded ? '\u25BC' : '\u25B6') : (i + 1)}
+                            </td>
+                            <td><strong>{g.player_name}</strong> <span className="team-tag">{g.player_team}</span></td>
+                            <td>{(g.date || '').slice(5)}</td>
+                            <td>{g.opponent || '—'}</td>
+                            <td className="stat-val">{g.stat_value != null ? (perMinute ? g.stat_value.toFixed(2) : g.stat_value) : '—'}</td>
+                            <td className={`das-val ${g.das > 1 ? 'das-pos' : g.das < -1 ? 'das-neg' : ''}`}>
+                              {g.das?.toFixed(2)}
+                            </td>
+                            <td>{g.components?.usage_spike?.toFixed(2) ?? '—'}</td>
+                            <td>{g.components?.shot_openness?.toFixed(2) ?? '—'}</td>
+                            <td>{g.components?.teammate_suppression?.toFixed(2) ?? '—'}</td>
+                            <td>{g.components?.touch_increase?.toFixed(2) ?? '—'}</td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="detail-row game-story-row">
+                              <td colSpan={10}>
+                                {gameStoryLoading ? (
+                                  <div className="game-story-loading">
+                                    <div className="loading-spinner" />
+                                    <p>Loading game narrative...</p>
+                                  </div>
+                                ) : (
+                                  renderGameStory()
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
