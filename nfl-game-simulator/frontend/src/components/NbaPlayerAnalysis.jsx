@@ -1191,12 +1191,6 @@ const NbaPlayerAnalysis = () => {
       if (gameStoryFilter === 'impact' && (a.pis || 0) < 5) return false;
       // Scheme filter
       if (gameStoryScheme !== 'all' && (a.play_type || 'other') !== gameStoryScheme) return false;
-    // Filter actions
-    const filteredActionsUnsorted = actions.filter(a => {
-      if (gameStoryFilter === 'all') return true;
-      if (gameStoryFilter === 'scoring') return a.points > 0;
-      if (gameStoryFilter === 'key') return !!momentMap[a.idx];
-      if (gameStoryFilter === 'impact') return (a.pis || 0) >= 5;
       return true;
     });
 
@@ -1426,6 +1420,61 @@ const NbaPlayerAnalysis = () => {
             <div className="gs-shot-legend">
               <span><span className="gs-dot made" /> Made</span>
               <span><span className="gs-dot missed" /> Missed</span>
+            </div>
+          </div>
+        )}
+
+        {/* Synergy Play Types — Offensive & Defensive */}
+        {gameStoryData?.synergy && (gameStoryData.synergy.offensive?.length > 0 || gameStoryData.synergy.defensive?.length > 0) && (
+          <div className="game-story-synergy">
+            <h4>Scoring Scheme Profile <span className="synergy-note">(Season averages)</span></h4>
+            <div className="synergy-grid">
+              {/* Offensive */}
+              {gameStoryData.synergy.offensive?.length > 0 && (
+                <div className="synergy-col">
+                  <h5>Offensive</h5>
+                  <div className="synergy-bars">
+                    {gameStoryData.synergy.offensive.filter(pt => pt.poss_pct >= 0.02).map((pt, i) => {
+                      const pctile = Math.round((pt.percentile || 0) * 100);
+                      const pctileClass = pctile >= 75 ? 'elite' : pctile >= 50 ? 'above' : pctile >= 25 ? 'avg' : 'below';
+                      return (
+                        <div key={i} className="synergy-bar-row">
+                          <span className="synergy-label">{pt.label}</span>
+                          <div className="synergy-bar-track">
+                            <div className={`synergy-bar-fill synergy-${pctileClass}`} style={{ width: `${Math.min(pt.poss_pct * 100 * 2.5, 100)}%` }} />
+                          </div>
+                          <span className="synergy-pct">{(pt.poss_pct * 100).toFixed(0)}%</span>
+                          <span className="synergy-ppp">{pt.ppp.toFixed(2)}</span>
+                          <span className={`synergy-pctile synergy-${pctileClass}`}>{pctile}th</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {/* Defensive */}
+              {gameStoryData.synergy.defensive?.length > 0 && (
+                <div className="synergy-col">
+                  <h5>Defensive</h5>
+                  <div className="synergy-bars">
+                    {gameStoryData.synergy.defensive.filter(pt => pt.poss_pct >= 0.02).map((pt, i) => {
+                      const pctile = Math.round((pt.percentile || 0) * 100);
+                      const pctileClass = pctile >= 75 ? 'elite' : pctile >= 50 ? 'above' : pctile >= 25 ? 'avg' : 'below';
+                      return (
+                        <div key={i} className="synergy-bar-row">
+                          <span className="synergy-label">{pt.label}</span>
+                          <div className="synergy-bar-track">
+                            <div className={`synergy-bar-fill synergy-${pctileClass}`} style={{ width: `${Math.min(pt.poss_pct * 100 * 2.5, 100)}%` }} />
+                          </div>
+                          <span className="synergy-pct">{(pt.poss_pct * 100).toFixed(0)}%</span>
+                          <span className="synergy-ppp">{pt.ppp.toFixed(2)}</span>
+                          <span className={`synergy-pctile synergy-${pctileClass}`}>{pctile}th</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

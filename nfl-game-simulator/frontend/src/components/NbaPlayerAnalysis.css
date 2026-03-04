@@ -2136,3 +2136,113 @@ th.stat-active {
 .pt-transition  { background: #ccfbf1; color: #0d9488; }
 .pt-ft          { background: #f0f0f0; color: #666; }
 .pt-other       { background: #f5f5f5; color: #999; }
+
+/* ── Synergy Play Types Section ── */
+
+.game-story-synergy {
+  margin-top: 16px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 10px;
+}
+
+.game-story-synergy h4 {
+  margin: 0 0 12px 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2c3e50;
+}
+
+.synergy-note {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: #999;
+}
+
+.synergy-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.synergy-col h5 {
+  margin: 0 0 8px 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.synergy-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+  font-size: 0.75rem;
+}
+
+.synergy-label {
+  width: 110px;
+  min-width: 110px;
+  font-weight: 500;
+  color: #2c3e50;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.synergy-bar-track {
+  flex: 1;
+  height: 10px;
+  background: #f0f0f0;
+  border-radius: 5px;
+  overflow: hidden;
+  min-width: 40px;
+}
+
+.synergy-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.synergy-elite  { background: #27ae60; color: #1e8449; }
+.synergy-above  { background: #6c7ae0; color: #4a5bc4; }
+.synergy-avg    { background: #bbb; color: #888; }
+.synergy-below  { background: #e74c3c; color: #c0392b; }
+
+.synergy-pct {
+  width: 28px;
+  text-align: right;
+  font-weight: 600;
+  color: #555;
+}
+
+.synergy-ppp {
+  width: 32px;
+  text-align: right;
+  font-weight: 500;
+  color: #777;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.72rem;
+}
+
+.synergy-pctile {
+  width: 30px;
+  text-align: right;
+  font-weight: 700;
+  font-size: 0.7rem;
+}
+
+.synergy-pctile.synergy-elite  { color: #1e8449; }
+.synergy-pctile.synergy-above  { color: #4a5bc4; }
+.synergy-pctile.synergy-avg    { color: #888; }
+.synergy-pctile.synergy-below  { color: #c0392b; }
+
+@media (max-width: 700px) {
+  .synergy-grid {
+    grid-template-columns: 1fr;
+  }
+}
