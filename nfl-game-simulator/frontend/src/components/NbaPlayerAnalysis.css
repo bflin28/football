@@ -2080,3 +2080,59 @@ th.stat-active {
   flex: 1;
   min-width: 120px;
 }
+
+/* ── Play Type Filter & Pills ── */
+
+.pbp-scheme-filter {
+  display: flex;
+  align-items: center;
+}
+
+.scheme-select {
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  font-size: 0.78rem;
+  font-weight: 500;
+  background: #fff;
+  color: #2c3e50;
+  cursor: pointer;
+  appearance: auto;
+}
+
+.scheme-select:hover {
+  border-color: #6c7ae0;
+}
+
+.scheme-select:focus {
+  outline: none;
+  border-color: #6c7ae0;
+  box-shadow: 0 0 0 2px rgba(108, 122, 224, 0.15);
+}
+
+.pbp-type-col {
+  width: 90px;
+}
+
+.pbp-play-type {
+  white-space: nowrap;
+}
+
+.play-type-pill {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Play type colors — muted, distinguishable palette */
+.pt-stepback    { background: #ede9fe; color: #6d28d9; }
+.pt-pullup      { background: #dbeafe; color: #2563eb; }
+.pt-drive       { background: #d1fae5; color: #059669; }
+.pt-catch       { background: #fef3c7; color: #b45309; }
+.pt-post        { background: #ffe4e6; color: #be123c; }
+.pt-transition  { background: #ccfbf1; color: #0d9488; }
+.pt-ft          { background: #f0f0f0; color: #666; }
+.pt-other       { background: #f5f5f5; color: #999; }

@@ -229,6 +229,7 @@ const NbaPlayerAnalysis = () => {
   const [gameStoryIndex, setGameStoryIndex] = useState(null);
   const [gameStoryFilter, setGameStoryFilter] = useState('all');
   const [gameStorySortBy, setGameStorySortBy] = useState('chronological');
+  const [gameStoryScheme, setGameStoryScheme] = useState('all');
 
   const statLabel = perMinute ? `${stat}/min` : stat;
 
@@ -1138,6 +1139,7 @@ const NbaPlayerAnalysis = () => {
     setGameStoryExpanded(key);
     setGameStoryLoading(true);
     setGameStoryFilter('all');
+    setGameStoryScheme('all');
 
     try {
       const res = await fetch(`/data/games/${entry.file}`);
@@ -1162,12 +1164,33 @@ const NbaPlayerAnalysis = () => {
       momentMap[km.action_index].push(km);
     });
 
-    // Filter actions
+    // Play type labels and colors
+    const PLAY_TYPE_META = {
+      stepback:     { label: 'Step-back',      className: 'pt-stepback' },
+      pullup:       { label: 'Pull-up',        className: 'pt-pullup' },
+      drive:        { label: 'Drive',           className: 'pt-drive' },
+      catch_shoot:  { label: 'Catch & Shoot',  className: 'pt-catch' },
+      post:         { label: 'Post/Fade',       className: 'pt-post' },
+      transition:   { label: 'Transition',      className: 'pt-transition' },
+      ft:           { label: 'Free Throw',      className: 'pt-ft' },
+      other:        { label: 'Other',            className: 'pt-other' },
+    };
+
+    // Count play types for dropdown labels
+    const playTypeCounts = {};
+    actions.forEach(a => {
+      const pt = a.play_type || 'other';
+      playTypeCounts[pt] = (playTypeCounts[pt] || 0) + 1;
+    });
+
+    // Filter actions (scheme filter chains with the main filter)
     const filteredActionsUnsorted = actions.filter(a => {
-      if (gameStoryFilter === 'all') return true;
-      if (gameStoryFilter === 'scoring') return a.points > 0;
-      if (gameStoryFilter === 'key') return !!momentMap[a.idx];
-      if (gameStoryFilter === 'impact') return (a.pis || 0) >= 5;
+      // Main filter
+      if (gameStoryFilter === 'scoring' && a.points <= 0) return false;
+      if (gameStoryFilter === 'key' && !momentMap[a.idx]) return false;
+      if (gameStoryFilter === 'impact' && (a.pis || 0) < 5) return false;
+      // Scheme filter
+      if (gameStoryScheme !== 'all' && (a.play_type || 'other') !== gameStoryScheme) return false;
       return true;
     });
 
@@ -1288,6 +1311,20 @@ const NbaPlayerAnalysis = () => {
                   </button>
                 ))}
               </div>
+              <div className="pbp-scheme-filter">
+                <select
+                  className="scheme-select"
+                  value={gameStoryScheme}
+                  onChange={e => setGameStoryScheme(e.target.value)}
+                >
+                  <option value="all">All Play Types</option>
+                  {['stepback', 'pullup', 'drive', 'catch_shoot', 'post', 'transition', 'ft', 'other'].map(pt => (
+                    <option key={pt} value={pt}>
+                      {PLAY_TYPE_META[pt].label} ({playTypeCounts[pt] || 0})
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="pbp-sort-toggle">
                 <button className={`pbp-sort-btn ${gameStorySortBy === 'chronological' ? 'active' : ''}`} onClick={() => setGameStorySortBy('chronological')}>
                   Chronological
@@ -1305,6 +1342,7 @@ const NbaPlayerAnalysis = () => {
                 <tr>
                   <th className="pbp-time-col">Time</th>
                   <th>Action</th>
+                  <th className="pbp-type-col">Type</th>
                   <th>Score</th>
                   <th>PTS</th>
                   <th className="pbp-pis-col">Impact</th>
@@ -1321,6 +1359,13 @@ const NbaPlayerAnalysis = () => {
                         <span className="pbp-clock">{a.clock}</span>
                       </td>
                       <td className="pbp-desc">{a.description || '—'}</td>
+                      <td className="pbp-play-type">
+                        {a.play_type && PLAY_TYPE_META[a.play_type] && (
+                          <span className={`play-type-pill ${PLAY_TYPE_META[a.play_type].className}`}>
+                            {PLAY_TYPE_META[a.play_type].label}
+                          </span>
+                        )}
+                      </td>
                       <td className="pbp-score">{a.score_away}-{a.score_home}</td>
                       <td className="pbp-running-pts">{a.running_pts}</td>
                       <td className="pbp-pis">

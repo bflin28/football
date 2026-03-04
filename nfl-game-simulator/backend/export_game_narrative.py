@@ -313,6 +313,168 @@ def compute_play_impact_scores(actions, key_moments, is_home):
         }
 
 
+def classify_play_type(action):
+    """Classify an action into a play type category based on shot mechanics.
+
+    Categories:
+      stepback     — Step-back shots
+      pullup       — Pull-up jumpers and unassisted generic jump shots
+      drive        — Driving layups, floaters, dunks
+      catch_shoot  — Assisted perimeter shots (spot-up, off-screen, etc.)
+      post         — Turnarounds, fadeaways, hook shots
+      transition   — Running/fast-break plays
+      ft           — Free throws
+      other        — Rebounds, turnovers, fouls, putbacks, etc.
+    """
+    at = action.get('action_type', '')
+    st = (action.get('sub_type') or '').lower()
+    desc = action.get('description') or ''
+    assisted = 'AST)' in desc
+
+    # Free throws
+    if at == 'Free Throw':
+        return 'ft'
+
+    # Non-shot actions
+    if at not in ('Made Shot', 'Missed Shot'):
+        return 'other'
+
+    # Shot classification (priority order)
+    if 'step back' in st:
+        return 'stepback'
+    if st.startswith('driving') or 'driving' in st:
+        return 'drive'
+    if 'turnaround' in st or 'hook' in st or 'fadeaway' in st:
+        return 'post'
+    if 'running' in st and 'pull-up' not in st and 'pull up' not in st:
+        return 'transition'
+    if 'pullup' in st or 'pull-up' in st or 'pull up' in st:
+        return 'pullup'
+    if 'putback' in st or 'tip' in st:
+        return 'other'
+
+    # Assisted shot → catch & shoot
+    if assisted:
+        return 'catch_shoot'
+
+    # Unassisted generic jump shot → pull-up
+    return 'pullup'
+
+
+def classify_play_types(actions):
+    """Add play_type field to each action."""
+    for action in actions:
+        action['play_type'] = classify_play_type(action)
+
+
+def export_game_narrative(game_id, player_id, player_slug, player_name, game_meta):
+    """Export PBP narrative for a single game."""
+    is_home = game_meta.get('is_home', False)
+
+    # Fetch PBP
+    time.sleep(0.4)
+    pbp = playbyplayv3.PlayByPlayV3(game_id=game_id, timeout=30)
+    df = pbp.get_data_frames()[0]
+
+    if df.empty:
+        print(f'    PBP: empty')
+        return None
+
+    # Get final score from last row with score data
+    scored_rows = df.dropna(subset=['scoreHome', 'scoreAway'])
+    final_home = int(scored_rows.iloc[-1]['scoreHome']) if not scored_rows.empty else 0
+    final_away = int(scored_rows.iloc[-1]['scoreAway']) if not scored_rows.empty else 0
+    max_period = int(df['period'].max())
+
+    # Filter to this player's actions
+    player_df = df[df['personId'] == player_id].copy()
+
+    # Build actions list
+    actions = []
+    last_score_home = 0
+    last_score_away = 0
+    running_pts = 0
+
+    # Forward-fill scores across all rows for margin tracking
+    import pandas as pd
+    df['scoreHome'] = pd.to_numeric(df['scoreHome'], errors='coerce').ffill().fillna(0).astype(int)
+    df['scoreAway'] = pd.to_numeric(df['scoreAway'], errors='coerce').ffill().fillna(0).astype(int)
+
+    for i, (_, row) in enumerate(player_df.iterrows()):
+        action_type = str(row.get('actionType', '') or '')
+        sub_type = str(row.get('subType', '') or '')
+        description = str(row.get('description', '') or '')
+        clock_display, clock_seconds = parse_clock(str(row.get('clock', '')))
+
+        # Determine points scored on this action
+        points = 0
+        made = False
+        shot_value = 0
+
+        if action_type == 'Made Shot':
+            shot_value = _safe_int(row.get('shotValue')) or 2
+            points = shot_value
+            made = True
+        elif action_type == 'Free Throw' and 'MISS' not in description:
+            points = 1
+            made = True
+            shot_value = 1
+
+        running_pts += points
+
+        # Score at this moment
+        idx_in_full = row.name  # original DataFrame index
+        score_home = int(df.loc[idx_in_full, 'scoreHome'])
+        score_away = int(df.loc[idx_in_full, 'scoreAway'])
+
+        # Detect go-ahead
+        player_score_before = (last_score_home if is_home else last_score_away)
+        opp_score_before = (last_score_away if is_home else last_score_home)
+        player_score_after = (score_home if is_home else score_away)
+        opp_score_after = (score_away if is_home else score_home)
+        went_ahead = (points > 0 and
+                      player_score_before <= opp_score_before and
+                      player_score_after > opp_score_after)
+
+        if score_home > 0 or score_away > 0:
+            last_score_home = score_home
+            last_score_away = score_away
+
+        action = {
+            'idx': i,
+            'period': int(row.get('period', 0)),
+            'clock': clock_display,
+            'clock_seconds': clock_seconds,
+            'action_type': action_type,
+            'sub_type': sub_type,
+            'description': description,
+            'made': made,
+            'shot_value': shot_value if shot_value > 0 else None,
+            'shot_distance': _safe_int(row.get('shotDistance')),
+            'x': _safe_int(row.get('xLegacy')),
+            'y': _safe_int(row.get('yLegacy')),
+            'points': points,
+            'running_pts': running_pts,
+            'score_home': score_home,
+            'score_away': score_away,
+            'went_ahead': went_ahead,
+        }
+
+        # Skip substitutions and period starts to keep it focused
+        if action_type in ('Substitution', 'Period', 'Game'):
+            continue
+
+        actions.append(action)
+
+    # Detect key moments
+    key_moments = detect_key_moments(actions, is_home)
+
+    # Compute Play Impact Scores
+    compute_play_impact_scores(actions, key_moments, is_home)
+
+    # Classify play types
+    classify_play_types(actions)
+
     # Compute scoring timeline by period
     by_period = {}
     for a in actions:
