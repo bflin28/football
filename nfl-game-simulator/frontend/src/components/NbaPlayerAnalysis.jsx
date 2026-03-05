@@ -231,6 +231,14 @@ const NbaPlayerAnalysis = () => {
   const [gameStorySortBy, setGameStorySortBy] = useState('chronological');
   const [gameStoryScheme, setGameStoryScheme] = useState('all');
 
+  // ── Team Defense Lab ──
+  const [teamDefenseData, setTeamDefenseData] = useState(null);
+  const [teamDefenseLoading, setTeamDefenseLoading] = useState(false);
+  const [teamDefenseIndex, setTeamDefenseIndex] = useState(null);
+  const [selectedTeam, setSelectedTeam] = useState(null);
+  const [defPosFilter, setDefPosFilter] = useState('all');
+  const [defPlayerSort, setDefPlayerSort] = useState('PTS');
+
   const statLabel = perMinute ? `${stat}/min` : stat;
 
   const autoAnalyzed = useRef(false);
@@ -239,6 +247,10 @@ const NbaPlayerAnalysis = () => {
     fetch('/data/manifest.json')
       .then(r => safeJson(r))
       .then(data => { if (data) setAvailablePlayers(data.players || []); })
+      .catch(() => {});
+    fetch('/data/team_index.json')
+      .then(r => safeJson(r))
+      .then(data => { if (data) setTeamDefenseIndex(data); })
       .catch(() => {});
     fetch('/data/game_index.json')
       .then(r => safeJson(r))
@@ -1152,6 +1164,273 @@ const NbaPlayerAnalysis = () => {
     }
   };
 
+  // ── Team Defense Lab: Load team data ──
+  const handleTeamSelect = async (teamAbbr) => {
+    if (selectedTeam === teamAbbr) return;
+    setSelectedTeam(teamAbbr);
+    setTeamDefenseLoading(true);
+    setDefPosFilter('all');
+    try {
+      const res = await fetch(`/data/teams/${teamAbbr}.json`);
+      const data = await safeJson(res);
+      if (data) setTeamDefenseData(data);
+    } catch (err) {
+      console.error('Failed to load team defense data:', err);
+    } finally {
+      setTeamDefenseLoading(false);
+    }
+  };
+
+  // ── Render: Team Defense Lab ──
+  const POS_LABELS = { G: 'Guards', F: 'Wings', C: 'Bigs' };
+  const POS_COLORS = { G: '#3498db', F: '#e67e22', C: '#27ae60' };
+  const STAT_LABELS = { PTS: 'PTS', REB: 'REB', AST: 'AST', STL: 'STL', FG_PCT: 'FG%', FG3_PCT: '3PT%' };
+  const STAT_FORMAT = (stat, val) => {
+    if (val == null) return '—';
+    if (stat === 'FG_PCT' || stat === 'FG3_PCT') return `${val > 0 ? '+' : ''}${(val * 100).toFixed(1)}%`;
+    return `${val > 0 ? '+' : ''}${val.toFixed(1)}`;
+  };
+
+  const renderTeamDefenseLab = () => {
+    const td = teamDefenseData;
+    return (
+      <div className="defense-lab-content">
+        {/* Team Selector Grid */}
+        <div className="team-selector-section">
+          <h3>Select a Team</h3>
+          <p className="team-selector-sub">Sorted by defensive rating. Pick a team to see how their defense affects opponent stats by position.</p>
+          <div className="team-selector-grid">
+            {(teamDefenseIndex?.teams || [])
+              .sort((a, b) => (a.def_rating_rank || 30) - (b.def_rating_rank || 30))
+              .map(t => (
+                <button key={t.abbreviation}
+                  className={`team-chip ${selectedTeam === t.abbreviation ? 'active' : ''}`}
+                  onClick={() => handleTeamSelect(t.abbreviation)}>
+                  <span className="team-chip-abbr">{t.abbreviation}</span>
+                  <span className="team-chip-rank">#{t.def_rating_rank || '?'}</span>
+                </button>
+              ))}
+          </div>
+        </div>
+
+        {teamDefenseLoading && (
+          <div className="leaderboard-progress"><div className="loading-spinner" /><p>Loading team data...</p></div>
+        )}
+
+        {td && !teamDefenseLoading && (
+          <>
+            {/* Team Header */}
+            <div className="def-team-header">
+              <h2>{td.team?.full_name}</h2>
+              <div className="def-header-stats">
+                {td.ratings?.def_rating && <span className="def-header-chip">DefRtg: <strong>{td.ratings.def_rating.toFixed(1)}</strong> <em>#{td.ratings.def_rating_rank}</em></span>}
+                {td.ratings?.pace && <span className="def-header-chip">Pace: <strong>{td.ratings.pace.toFixed(1)}</strong></span>}
+                {td.ratings?.net_rating != null && <span className="def-header-chip">Net: <strong>{td.ratings.net_rating > 0 ? '+' : ''}{td.ratings.net_rating.toFixed(1)}</strong></span>}
+              </div>
+            </div>
+
+            {/* Position Impact Cards */}
+            <div className="position-impact-grid">
+              {['G', 'F', 'C'].map(pos => {
+                const pi = td.position_impact?.[pos];
+                if (!pi) return null;
+                const devs = pi.deviations || {};
+                return (
+                  <div key={pos} className={`position-card pos-${pos.toLowerCase()}`}>
+                    <div className="pos-card-header">
+                      <h4>{POS_LABELS[pos]}</h4>
+                      <span className="pos-sample">{pi.sample_size?.unique_players || 0} players · {pi.sample_size?.total_player_games || 0} GP</span>
+                    </div>
+                    <div className="pos-deviation-list">
+                      {['PTS', 'REB', 'AST', 'STL', 'FG_PCT', 'FG3_PCT'].map(st => {
+                        const d = devs[st];
+                        if (!d) return null;
+                        const val = d.value || 0;
+                        const isPct = st === 'FG_PCT' || st === 'FG3_PCT';
+                        const displayVal = isPct ? val * 100 : val;
+                        const maxBar = isPct ? 5 : 5; // 5% or 5 pts = full bar
+                        const barWidth = Math.min(Math.abs(displayVal) / maxBar * 100, 100);
+                        return (
+                          <div key={st} className="deviation-row">
+                            <span className="dev-stat-label">{STAT_LABELS[st]}</span>
+                            <div className="dev-bar-track">
+                              <div className="dev-bar-center" />
+                              <div className={`dev-bar-fill ${val < 0 ? 'dev-neg' : 'dev-pos'}`}
+                                style={{
+                                  width: `${barWidth / 2}%`,
+                                  ...(val < 0 ? { right: '50%' } : { left: '50%' }),
+                                }} />
+                            </div>
+                            <span className={`dev-value ${val < 0 ? 'dev-neg-text' : 'dev-pos-text'}`}>
+                              {STAT_FORMAT(st, val)}
+                            </span>
+                            {d.rank && <span className={`dev-rank ${d.rank <= 5 ? 'rank-elite' : d.rank <= 10 ? 'rank-good' : ''}`}>#{d.rank}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Scheme Fingerprint */}
+            {td.scheme_fingerprint && (
+              <div className="def-scheme-section">
+                <h3>Defensive Scheme Fingerprint</h3>
+                <div className="scheme-grid">
+                  {/* Synergy Defensive Play Types */}
+                  {td.scheme_fingerprint.synergy_defensive?.length > 0 && (
+                    <div className="scheme-col">
+                      <h5>Play Type Defense</h5>
+                      <div className="synergy-bars">
+                        {td.scheme_fingerprint.synergy_defensive.filter(pt => (pt.poss_pct || 0) >= 0.02).map((pt, i) => {
+                          const pctile = Math.round((pt.percentile || 0) * 100);
+                          const pctileClass = pctile >= 75 ? 'elite' : pctile >= 50 ? 'above' : pctile >= 25 ? 'avg' : 'below';
+                          return (
+                            <div key={i} className="synergy-bar-row">
+                              <span className="synergy-label">{pt.label}</span>
+                              <div className="synergy-bar-track">
+                                <div className={`synergy-bar-fill synergy-${pctileClass}`} style={{ width: `${Math.min((pt.poss_pct || 0) * 100 * 2.5, 100)}%` }} />
+                              </div>
+                              <span className="synergy-pct">{((pt.poss_pct || 0) * 100).toFixed(0)}%</span>
+                              <span className="synergy-ppp">{(pt.ppp || 0).toFixed(2)}</span>
+                              <span className={`synergy-pctile synergy-${pctileClass}`}>{pctile}th</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Contest Profile + Hustle */}
+                  <div className="scheme-col">
+                    <h5>Contest & Hustle</h5>
+                    <div className="hustle-stats">
+                      {td.scheme_fingerprint.contest_profile?.overall && (() => {
+                        const cp = td.scheme_fingerprint.contest_profile;
+                        return (
+                          <div className="contest-zones">
+                            {[
+                              { key: 'overall', label: 'Overall' },
+                              { key: '3_pointers', label: '3-Pointers' },
+                              { key: 'less_than_6ft', label: 'At Rim (<6ft)' },
+                              { key: 'greater_than_15ft', label: 'Mid-Range (>15ft)' },
+                            ].map(zone => {
+                              const z = cp[zone.key];
+                              if (!z) return null;
+                              const pm = z.pct_plusminus;
+                              return (
+                                <div key={zone.key} className="contest-zone-row">
+                                  <span className="contest-zone-label">{zone.label}</span>
+                                  <span className={`contest-zone-pm ${pm < 0 ? 'good' : 'bad'}`}>
+                                    {pm > 0 ? '+' : ''}{(pm * 100).toFixed(1)}%
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                      {td.scheme_fingerprint.hustle && (
+                        <div className="hustle-grid">
+                          {[
+                            { key: 'contested_shots', label: 'Contested Shots/G' },
+                            { key: 'deflections', label: 'Deflections/G' },
+                            { key: 'charges_drawn', label: 'Charges/G' },
+                            { key: 'loose_balls_def', label: 'Loose Balls/G' },
+                          ].map(h => (
+                            <div key={h.key} className="hustle-item">
+                              <span className="hustle-val">{td.scheme_fingerprint.hustle[h.key]?.toFixed(1) || '—'}</span>
+                              <span className="hustle-label">{h.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Key Findings */}
+            {td.insights?.length > 0 && (
+              <div className="def-insights-section">
+                <h3>Key Findings</h3>
+                {td.insights.map((ins, i) => (
+                  <div key={i} className={`insight-card insight-${ins.severity}`}>
+                    <span className="insight-text">{ins.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Individual Player Drill-Down */}
+            {(() => {
+              const allPlayers = [];
+              for (const pos of ['G', 'F', 'C']) {
+                const pi = td.position_impact?.[pos];
+                if (pi?.top_affected_players) {
+                  pi.top_affected_players.forEach(p => allPlayers.push({ ...p, position: pos }));
+                }
+              }
+              if (allPlayers.length === 0) return null;
+              const filtered = defPosFilter === 'all' ? allPlayers : allPlayers.filter(p => p.position === defPosFilter);
+              const sorted = [...filtered].sort((a, b) => (a.deviations?.[defPlayerSort] || 0) - (b.deviations?.[defPlayerSort] || 0));
+              return (
+                <div className="def-players-section">
+                  <h3>Most Affected Opponents</h3>
+                  <div className="pbp-controls">
+                    {['all', 'G', 'F', 'C'].map(p => (
+                      <button key={p} className={`pbp-filter-btn ${defPosFilter === p ? 'active' : ''}`}
+                        onClick={() => setDefPosFilter(p)}>
+                        {p === 'all' ? `All (${allPlayers.length})` : `${POS_LABELS[p]} (${allPlayers.filter(x => x.position === p).length})`}
+                      </button>
+                    ))}
+                  </div>
+                  <table className="game-log-table compact">
+                    <thead>
+                      <tr>
+                        <th>Player</th>
+                        <th>Pos</th>
+                        <th>Team</th>
+                        <th>GP</th>
+                        {['PTS', 'FG_PCT', 'REB', 'AST'].map(st => (
+                          <th key={st} className={`sortable ${defPlayerSort === st ? 'sorted' : ''}`}
+                            onClick={() => setDefPlayerSort(st)}>
+                            Δ {STAT_LABELS[st] || st}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sorted.slice(0, 30).map((p, i) => (
+                        <tr key={i}>
+                          <td className="player-name-cell">{p.player_name}</td>
+                          <td><span className="pos-badge" style={{ color: POS_COLORS[p.position] }}>{p.position}</span></td>
+                          <td>{p.team}</td>
+                          <td>{p.gp}</td>
+                          {['PTS', 'FG_PCT', 'REB', 'AST'].map(st => {
+                            const v = p.deviations?.[st];
+                            return (
+                              <td key={st} className={v < 0 ? 'dev-neg-text' : v > 0 ? 'dev-pos-text' : ''}>
+                                {STAT_FORMAT(st, v)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+          </>
+        )}
+      </div>
+    );
+  };
+
   // ── Render: Game Story Panel ──
   const renderGameStory = () => {
     if (!gameStoryData) return null;
@@ -1905,6 +2184,9 @@ const NbaPlayerAnalysis = () => {
           <button className={`view-btn ${viewMode === 'leaderboard' ? 'active' : ''}`} role="tab" aria-selected={viewMode === 'leaderboard'} onClick={() => setViewMode('leaderboard')}>
             League Leaderboard
           </button>
+          <button className={`view-btn ${viewMode === 'defense' ? 'active' : ''}`} role="tab" aria-selected={viewMode === 'defense'} onClick={() => setViewMode('defense')}>
+            Team Defense Lab
+          </button>
         </div>
       </div>
 
@@ -2147,6 +2429,13 @@ const NbaPlayerAnalysis = () => {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ─── TEAM DEFENSE LAB ─── */}
+      {viewMode === 'defense' && (
+        <div className="defense-lab-view">
+          {renderTeamDefenseLab()}
         </div>
       )}
     </div>
