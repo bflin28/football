@@ -1,0 +1,306 @@
+{
+  "teams": [
+    {
+      "abbreviation": "ATL",
+      "full_name": "Atlanta Hawks",
+      "id": 1610612737,
+      "def_rating": 113.6,
+      "def_rating_rank": 14,
+      "file": "ATL.json",
+      "headline": "",
+      "file_size_kb": 21.3
+    },
+    {
+      "abbreviation": "BKN",
+      "full_name": "Brooklyn Nets",
+      "id": 1610612751,
+      "def_rating": 118.4,
+      "def_rating_rank": 27,
+      "file": "BKN.json",
+      "headline": "",
+      "file_size_kb": 20.9
+    },
+    {
+      "abbreviation": "BOS",
+      "full_name": "Boston Celtics",
+      "id": 1610612738,
+      "def_rating": 111.6,
+      "def_rating_rank": 5,
+      "file": "BOS.json",
+      "headline": "Guards PTS -1.0 (#2)",
+      "file_size_kb": 21.3
+    },
+    {
+      "abbreviation": "CHA",
+      "full_name": "Charlotte Hornets",
+      "id": 1610612766,
+      "def_rating": 114.1,
+      "def_rating_rank": 16,
+      "file": "CHA.json",
+      "headline": "",
+      "file_size_kb": 21.1
+    },
+    {
+      "abbreviation": "CHI",
+      "full_name": "Chicago Bulls",
+      "id": 1610612741,
+      "def_rating": 116.9,
+      "def_rating_rank": 25,
+      "file": "CHI.json",
+      "headline": "",
+      "file_size_kb": 21.0
+    },
+    {
+      "abbreviation": "CLE",
+      "full_name": "Cleveland Cavaliers",
+      "id": 1610612739,
+      "def_rating": 113.1,
+      "def_rating_rank": 12,
+      "file": "CLE.json",
+      "headline": "",
+      "file_size_kb": 21.4
+    },
+    {
+      "abbreviation": "DAL",
+      "full_name": "Dallas Mavericks",
+      "id": 1610612742,
+      "def_rating": 113.9,
+      "def_rating_rank": 15,
+      "file": "DAL.json",
+      "headline": "",
+      "file_size_kb": 21.6
+    },
+    {
+      "abbreviation": "DEN",
+      "full_name": "Denver Nuggets",
+      "id": 1610612743,
+      "def_rating": 115.9,
+      "def_rating_rank": 21,
+      "file": "DEN.json",
+      "headline": "",
+      "file_size_kb": 21.4
+    },
+    {
+      "abbreviation": "DET",
+      "full_name": "Detroit Pistons",
+      "id": 1610612765,
+      "def_rating": 108.4,
+      "def_rating_rank": 2,
+      "file": "DET.json",
+      "headline": "",
+      "file_size_kb": 21.8
+    },
+    {
+      "abbreviation": "GSW",
+      "full_name": "Golden State Warriors",
+      "id": 1610612744,
+      "def_rating": 112.9,
+      "def_rating_rank": 11,
+      "file": "GSW.json",
+      "headline": "",
+      "file_size_kb": 21.4
+    },
+    {
+      "abbreviation": "HOU",
+      "full_name": "Houston Rockets",
+      "id": 1610612745,
+      "def_rating": 111.7,
+      "def_rating_rank": 6,
+      "file": "HOU.json",
+      "headline": "Guards PTS -1.0 (#1)",
+      "file_size_kb": 21.5
+    },
+    {
+      "abbreviation": "IND",
+      "full_name": "Indiana Pacers",
+      "id": 1610612754,
+      "def_rating": 116.7,
+      "def_rating_rank": 23,
+      "file": "IND.json",
+      "headline": "",
+      "file_size_kb": 21.1
+    },
+    {
+      "abbreviation": "LAC",
+      "full_name": "Los Angeles Clippers",
+      "id": 1610612746,
+      "def_rating": null,
+      "def_rating_rank": 30,
+      "file": "LAC.json",
+      "headline": "",
+      "file_size_kb": 21.2
+    },
+    {
+      "abbreviation": "LAL",
+      "full_name": "Los Angeles Lakers",
+      "id": 1610612747,
+      "def_rating": 116.0,
+      "def_rating_rank": 22,
+      "file": "LAL.json",
+      "headline": "Bigs PTS -1.1 (#2)",
+      "file_size_kb": 21.2
+    },
+    {
+      "abbreviation": "MEM",
+      "full_name": "Memphis Grizzlies",
+      "id": 1610612763,
+      "def_rating": 115.5,
+      "def_rating_rank": 19,
+      "file": "MEM.json",
+      "headline": "",
+      "file_size_kb": 21.2
+    },
+    {
+      "abbreviation": "MIA",
+      "full_name": "Miami Heat",
+      "id": 1610612748,
+      "def_rating": 111.3,
+      "def_rating_rank": 4,
+      "file": "MIA.json",
+      "headline": "",
+      "file_size_kb": 21.5
+    },
+    {
+      "abbreviation": "MIL",
+      "full_name": "Milwaukee Bucks",
+      "id": 1610612749,
+      "def_rating": 116.7,
+      "def_rating_rank": 24,
+      "file": "MIL.json",
+      "headline": "",
+      "file_size_kb": 21.1
+    },
+    {
+      "abbreviation": "MIN",
+      "full_name": "Minnesota Timberwolves",
+      "id": 1610612750,
+      "def_rating": 112.2,
+      "def_rating_rank": 9,
+      "file": "MIN.json",
+      "headline": "",
+      "file_size_kb": 21.2
+    },
+    {
+      "abbreviation": "NOP",
+      "full_name": "New Orleans Pelicans",
+      "id": 1610612740,
+      "def_rating": 117.7,
+      "def_rating_rank": 26,
+      "file": "NOP.json",
+      "headline": "",
+      "file_size_kb": 21.2
+    },
+    {
+      "abbreviation": "NYK",
+      "full_name": "New York Knicks",
+      "id": 1610612752,
+      "def_rating": 112.0,
+      "def_rating_rank": 7,
+      "file": "NYK.json",
+      "headline": "",
+      "file_size_kb": 21.5
+    },
+    {
+      "abbreviation": "OKC",
+      "full_name": "Oklahoma City Thunder",
+      "id": 1610612760,
+      "def_rating": 106.0,
+      "def_rating_rank": 1,
+      "file": "OKC.json",
+      "headline": "Wings PTS -1.1 (#1) | Bigs PTS -1.3 (#1)",
+      "file_size_kb": 21.6
+    },
+    {
+      "abbreviation": "ORL",
+      "full_name": "Orlando Magic",
+      "id": 1610612753,
+      "def_rating": 113.3,
+      "def_rating_rank": 13,
+      "file": "ORL.json",
+      "headline": "",
+      "file_size_kb": 21.1
+    },
+    {
+      "abbreviation": "PHI",
+      "full_name": "Philadelphia 76ers",
+      "id": 1610612755,
+      "def_rating": 114.5,
+      "def_rating_rank": 17,
+      "file": "PHI.json",
+      "headline": "",
+      "file_size_kb": 21.0
+    },
+    {
+      "abbreviation": "PHX",
+      "full_name": "Phoenix Suns",
+      "id": 1610612756,
+      "def_rating": 112.5,
+      "def_rating_rank": 10,
+      "file": "PHX.json",
+      "headline": "",
+      "file_size_kb": 21.5
+    },
+    {
+      "abbreviation": "POR",
+      "full_name": "Portland Trail Blazers",
+      "id": 1610612757,
+      "def_rating": 115.7,
+      "def_rating_rank": 20,
+      "file": "POR.json",
+      "headline": "",
+      "file_size_kb": 21.2
+    },
+    {
+      "abbreviation": "SAC",
+      "full_name": "Sacramento Kings",
+      "id": 1610612758,
+      "def_rating": 120.1,
+      "def_rating_rank": 28,
+      "file": "SAC.json",
+      "headline": "",
+      "file_size_kb": 21.0
+    },
+    {
+      "abbreviation": "SAS",
+      "full_name": "San Antonio Spurs",
+      "id": 1610612759,
+      "def_rating": 110.0,
+      "def_rating_rank": 3,
+      "file": "SAS.json",
+      "headline": "",
+      "file_size_kb": 21.6
+    },
+    {
+      "abbreviation": "TOR",
+      "full_name": "Toronto Raptors",
+      "id": 1610612761,
+      "def_rating": 112.1,
+      "def_rating_rank": 8,
+      "file": "TOR.json",
+      "headline": "",
+      "file_size_kb": 21.4
+    },
+    {
+      "abbreviation": "UTA",
+      "full_name": "Utah Jazz",
+      "id": 1610612762,
+      "def_rating": 120.8,
+      "def_rating_rank": 30,
+      "file": "UTA.json",
+      "headline": "",
+      "file_size_kb": 20.9
+    },
+    {
+      "abbreviation": "WAS",
+      "full_name": "Washington Wizards",
+      "id": 1610612764,
+      "def_rating": 120.2,
+      "def_rating_rank": 29,
+      "file": "WAS.json",
+      "headline": "",
+      "file_size_kb": 21.0
+    }
+  ],
+  "season": "2025-26",
+  "exported_at": "2026-03-05T00:01:56.995616+00:00"
+}
